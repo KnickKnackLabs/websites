@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+#MISE description="Create a new GitHub account"
+#USAGE arg "<email>" help="Email address for the account"
+#USAGE arg "<username>" help="GitHub username"
+#USAGE flag "--password <password>" help="Account password (or reads from stdin)"
+#USAGE flag "--country <country>" help="Country for signup (default: United States of America)"
+#MISE raw=true
+
+set -e
+
+echo "TODO: Automate GitHub account creation"
+echo ""
+echo "  Email:    ${usage_email}"
+echo "  Username: ${usage_username}"
+echo "  Country:  ${usage_country:-United States of America}"
+echo ""
+echo "This task will use browser automation (Playwright) to:"
+echo "  1. Navigate to github.com/signup"
+echo "  2. Fill in email, password, username, country"
+echo "  3. Handle email verification (needs email access)"
+echo "  4. Complete account creation"
