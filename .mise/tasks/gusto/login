@@ -1,0 +1,30 @@
+#!/usr/bin/env bash
+#MISE description="Bootstrap Gusto authentication"
+set -eo pipefail
+
+# Detect agent name
+AGENT=$(git config user.email | sed -n 's/@ricon\.family//p')
+if [ -z "$AGENT" ]; then
+  echo "Error: Could not detect agent name from git config" >&2
+  exit 1
+fi
+
+AUTH_DIR="$HOME/.config/shimmer/browser/$AGENT"
+AUTH_FILE="$AUTH_DIR/gusto.com.json"
+
+if [ -f "$AUTH_FILE" ]; then
+  AGE_MIN=$(( ($(date +%s) - $(stat -f%m "$AUTH_FILE")) / 60 ))
+  echo "Auth file exists for $AGENT (${AGE_MIN}m old): $AUTH_FILE"
+  exit 0
+fi
+
+# Create empty auth state for public pages
+mkdir -p "$AUTH_DIR"
+echo '{"cookies":[],"origins":[]}' > "$AUTH_FILE"
+chmod 600 "$AUTH_FILE"
+
+echo "Created empty auth state for $AGENT: $AUTH_FILE"
+echo "This allows access to public pages only."
+echo ""
+echo "For authenticated access, run:"
+echo "  shimmer browser:login --interactive gusto.com"

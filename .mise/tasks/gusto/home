@@ -1,0 +1,49 @@
+#!/usr/bin/env bash
+#MISE description="View Gusto homepage data"
+#USAGE flag "--json" help="Output raw JSON instead of formatted table"
+set -eo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPT="$SCRIPT_DIR/../../../scripts/gusto/home.mjs"
+
+STDERR_FILE=$(mktemp)
+trap "rm -f $STDERR_FILE" EXIT
+
+OUTPUT=$(shimmer browser:run "$SCRIPT" 2>"$STDERR_FILE" | grep '^{') || true
+
+if [ -z "$OUTPUT" ]; then
+  echo "Failed to fetch Gusto homepage." >&2
+  if [ -s "$STDERR_FILE" ]; then
+    cat "$STDERR_FILE" >&2
+  fi
+  exit 1
+fi
+
+if [ "${usage_json}" = "true" ]; then
+  echo "$OUTPUT"
+else
+  echo ""
+  echo "Title: $(echo "$OUTPUT" | jq -r '.title')"
+  echo ""
+
+  NAV_COUNT=$(echo "$OUTPUT" | jq '.navLinks | length')
+  if [ "$NAV_COUNT" -gt 0 ]; then
+    echo "Navigation:"
+    echo "$OUTPUT" | jq -r '.navLinks[] | "  \(.text)"'
+    echo ""
+  fi
+
+  HEADING_COUNT=$(echo "$OUTPUT" | jq '.headings | length')
+  if [ "$HEADING_COUNT" -gt 0 ]; then
+    echo "Headings:"
+    echo "$OUTPUT" | jq -r '.headings[] | "  [\(.level)] \(.text)"'
+    echo ""
+  fi
+
+  CTA_COUNT=$(echo "$OUTPUT" | jq '.ctas | length')
+  if [ "$CTA_COUNT" -gt 0 ]; then
+    echo "CTAs:"
+    echo "$OUTPUT" | jq -r '.ctas[] | "  \(.text)"'
+    echo ""
+  fi
+fi
