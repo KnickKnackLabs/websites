@@ -1,0 +1,31 @@
+#!/usr/bin/env bash
+#MISE description="List GitHub organization memberships for an agent"
+#USAGE arg "[agent]" help="Agent name (default: current agent)"
+
+set -e
+
+VAULT="Agents"
+
+# Resolve agent
+if [ -n "${usage_agent:-}" ]; then
+  AGENT="$usage_agent"
+elif [ -n "$GIT_AUTHOR_EMAIL" ]; then
+  AGENT=$(echo "$GIT_AUTHOR_EMAIL" | sed 's/@ricon\.family$//')
+elif git config user.email 2>/dev/null | grep -q '@ricon.family'; then
+  AGENT=$(git config user.email | sed 's/@ricon\.family$//')
+else
+  echo "ERROR: No agent specified and no identity detected." >&2
+  exit 1
+fi
+
+# Get PAT from 1Password
+PAT=$(op item get "$AGENT - GitHub" --vault "$VAULT" --fields PAT --reveal 2>/dev/null || echo "")
+if [ -z "$PAT" ]; then
+  echo "ERROR: No PAT found for $AGENT" >&2
+  exit 1
+fi
+
+echo "Organizations for $AGENT:"
+echo ""
+
+GH_TOKEN="$PAT" gh api /user/orgs --jq '.[] | "  \(.login) — \(.description // "no description")"' 2>&1
