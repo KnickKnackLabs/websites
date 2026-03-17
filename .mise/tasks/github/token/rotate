@@ -1,89 +1,17 @@
 #!/usr/bin/env bash
-#MISE description="Rotate GitHub classic PATs for agents"
-#USAGE arg "[agents...]" var=#true help="Agent names (default: agents needing rotation)"
-#USAGE flag "--all" help="Rotate all agents regardless of token status"
+#MISE description="Regenerate a GitHub classic PAT by name"
+#USAGE arg "<token-name>" help="Name of the token to regenerate"
 #USAGE flag "--record" help="Record page artifacts for test fixtures"
-#USAGE flag "--expiry-threshold <days>" default="7" help="Days until expiry to trigger rotation (default: 7)"
 
 set -e
 
-VAULT="Agents"
-ALL_AGENTS=(brownie c0da johnson junior k7r2 quick rho x1f9)
-THRESHOLD="${usage_expiry_threshold:-7}"
+TOKEN_NAME="${usage_token_name:?Usage: websites github:token:rotate <token-name>}"
 PROJECT_DIR="${MISE_CONFIG_ROOT:?MISE_CONFIG_ROOT not set}"
 
-# Parse agent list
-eval "REQUESTED=(${usage_agents:-})"
-
-# Check 1Password
-if ! command -v op &> /dev/null; then
-  echo "ERROR: 1Password CLI (op) not found." >&2
+if [ -z "${GITHUB_USERNAME:-}" ] || [ -z "${GITHUB_PASSWORD:-}" ]; then
+  echo "ERROR: GITHUB_USERNAME and GITHUB_PASSWORD env vars required." >&2
   exit 1
 fi
-
-if ! op account get &> /dev/null; then
-  echo "ERROR: Not signed in to 1Password. Run: op signin" >&2
-  exit 1
-fi
-
-# --- Determine which agents to rotate ---
-
-if [ ${#REQUESTED[@]} -gt 0 ]; then
-  AGENTS=("${REQUESTED[@]}")
-elif [ "${usage_all:-false}" = "true" ]; then
-  AGENTS=("${ALL_AGENTS[@]}")
-else
-  # Auto-detect: check token status and rotate those expiring within threshold
-  echo "Checking token status..."
-  echo ""
-
-  AGENTS=()
-  for AGENT in "${ALL_AGENTS[@]}"; do
-    PAT=$(op item get "$AGENT - GitHub" --vault "$VAULT" --fields PAT --reveal 2>/dev/null || echo "")
-    if [ -z "$PAT" ]; then
-      printf "  %-10s ✗ no PAT — skipping\n" "$AGENT"
-      continue
-    fi
-
-    RESPONSE=$(GH_TOKEN="$PAT" gh api /user -i 2>&1 || true)
-
-    if echo "$RESPONSE" | grep -q '"Bad credentials"'; then
-      printf "  %-10s ✗ expired — will rotate\n" "$AGENT"
-      AGENTS+=("$AGENT")
-      continue
-    fi
-
-    EXPIRY=$(echo "$RESPONSE" | grep -i 'github-authentication-token-expiration:' | sed 's/.*: //' | tr -d '\r')
-    if [ -z "$EXPIRY" ]; then
-      printf "  %-10s ✓ no expiration\n" "$AGENT"
-      continue
-    fi
-
-    EXPIRY_EPOCH=$(date -j -f "%Y-%m-%d %H:%M:%S UTC" "$EXPIRY" "+%s" 2>/dev/null || date -d "$EXPIRY" "+%s" 2>/dev/null || echo "")
-    if [ -n "$EXPIRY_EPOCH" ]; then
-      NOW=$(date "+%s")
-      DAYS_LEFT=$(( (EXPIRY_EPOCH - NOW) / 86400 ))
-      if [ "$DAYS_LEFT" -le "$THRESHOLD" ]; then
-        printf "  %-10s ⚠ %d days left — will rotate\n" "$AGENT" "$DAYS_LEFT"
-        AGENTS+=("$AGENT")
-      else
-        printf "  %-10s ✓ %d days left\n" "$AGENT" "$DAYS_LEFT"
-      fi
-    else
-      printf "  %-10s ? expires %s\n" "$AGENT" "$EXPIRY"
-    fi
-  done
-
-  echo ""
-fi
-
-if [ ${#AGENTS[@]} -eq 0 ]; then
-  echo "No agents need rotation."
-  exit 0
-fi
-
-echo "Will rotate: ${AGENTS[*]}"
-echo ""
 
 # --- Recording setup ---
 if [ "${usage_record:-false}" = "true" ]; then
@@ -93,72 +21,24 @@ if [ "${usage_record:-false}" = "true" ]; then
   echo ""
 fi
 
-# --- Rotate each agent ---
-SUCCEEDED=()
-FAILED=()
+# --- Run the Patchright script ---
+OUTPUT=$(
+  shimmer browser:run "$PROJECT_DIR/scripts/github/token-rotate.mjs" -- "$TOKEN_NAME" \
+  2>&1
+) || {
+  echo "$OUTPUT" >&2
+  exit 1
+}
 
-for AGENT in "${AGENTS[@]}"; do
-  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-  echo "Rotating: $AGENT"
-  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-  echo ""
+echo "$OUTPUT" >&2
 
-  # Fetch credentials
-  USERNAME=$(op item get "$AGENT - GitHub" --vault "$VAULT" --fields username --reveal 2>/dev/null || echo "")
-  PASSWORD=$(op item get "$AGENT - GitHub" --vault "$VAULT" --fields password --reveal 2>/dev/null || echo "")
+# Extract and output just the token
+NEW_TOKEN=$(echo "$OUTPUT" | grep '^TOKEN:' | tail -1 | sed 's/^TOKEN://')
 
-  if [ -z "$USERNAME" ] || [ -z "$PASSWORD" ]; then
-    echo "  ✗ Could not fetch credentials for $AGENT"
-    FAILED+=("$AGENT")
-    echo ""
-    continue
-  fi
-
-  # Run the Patchright script
-  OUTPUT=$(
-    GITHUB_USERNAME="$USERNAME" \
-    GITHUB_PASSWORD="$PASSWORD" \
-    GIT_AUTHOR_EMAIL="${AGENT}@ricon.family" \
-    shimmer browser:run "$PROJECT_DIR/scripts/github/token-rotate.mjs" -- "$AGENT" \
-    2>&1
-  ) || {
-    echo "  ✗ Script failed for $AGENT"
-    echo "$OUTPUT" | tail -5
-    FAILED+=("$AGENT")
-    echo ""
-    continue
-  }
-
-  echo "$OUTPUT"
-
-  # Extract token from output
-  NEW_TOKEN=$(echo "$OUTPUT" | grep '^TOKEN:' | tail -1 | sed 's/^TOKEN://')
-
-  if [ -z "$NEW_TOKEN" ] || ! echo "$NEW_TOKEN" | grep -q '^ghp_'; then
-    echo "  ✗ Could not extract token from script output"
-    FAILED+=("$AGENT")
-    echo ""
-    continue
-  fi
-
-  # Store and sync
-  shimmer github:token:store "$AGENT" "$NEW_TOKEN"
-  echo "  ✓ Stored in secret provider"
-
-  GH_TOKEN="$NEW_TOKEN" shimmer agent:sync-secrets "$AGENT"
-  echo "  ✓ Synced to GitHub secrets"
-
-  SUCCEEDED+=("$AGENT")
-  echo ""
-done
-
-# --- Summary ---
-echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo "Results"
-echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-[ ${#SUCCEEDED[@]} -gt 0 ] && echo "  ✓ Rotated: ${SUCCEEDED[*]}"
-[ ${#FAILED[@]} -gt 0 ] && echo "  ✗ Failed:  ${FAILED[*]}"
-
-if [ ${#FAILED[@]} -gt 0 ]; then
+if [ -z "$NEW_TOKEN" ] || ! echo "$NEW_TOKEN" | grep -q '^ghp_'; then
+  echo "ERROR: Could not extract token from script output" >&2
   exit 1
 fi
+
+# Output the token on stdout (caller captures this)
+echo "$NEW_TOKEN"

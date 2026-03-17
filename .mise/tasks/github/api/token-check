@@ -1,83 +1,35 @@
 #!/usr/bin/env bash
-#MISE description="Check GitHub token status for agents"
-#USAGE arg "[agents...]" var=#true help="Agent names (default: all agents)"
+#MISE description="Check GitHub token status (expiry, validity)"
 
 set -e
 
-VAULT="Agents"
-ALL_AGENTS=(brownie c0da johnson junior k7r2 quick rho x1f9)
+RESPONSE=$(gh api /user -i 2>&1 || true)
 
-# Parse agent list — use all if none specified
-eval "REQUESTED=(${usage_agents:-})"
-if [ ${#REQUESTED[@]} -eq 0 ]; then
-  AGENTS=("${ALL_AGENTS[@]}")
-else
-  AGENTS=("${REQUESTED[@]}")
-fi
-
-# Check 1Password CLI
-if ! command -v op &> /dev/null; then
-  echo "ERROR: 1Password CLI (op) not found." >&2
+if echo "$RESPONSE" | grep -q '"Bad credentials"'; then
+  echo "✗ Token is expired or invalid"
   exit 1
 fi
 
-if ! op account get &> /dev/null; then
-  echo "ERROR: Not signed in to 1Password. Run: op signin" >&2
-  exit 1
+USER=$(echo "$RESPONSE" | grep -o '"login":"[^"]*"' | head -1 | cut -d'"' -f4)
+EXPIRY=$(echo "$RESPONSE" | grep -i 'github-authentication-token-expiration:' | sed 's/.*: //' | tr -d '\r')
+
+if [ -z "$EXPIRY" ]; then
+  echo "✓ $USER — no expiration"
+  exit 0
 fi
 
-echo ""
-echo "=== GitHub Token Status ==="
-echo ""
-
-NEED_ROTATION=()
-
-for AGENT in "${AGENTS[@]}"; do
-  PAT=$(op item get "$AGENT - GitHub" --vault "$VAULT" --fields PAT --reveal 2>/dev/null || echo "")
-
-  if [ -z "$PAT" ]; then
-    printf "  %-10s ✗ no PAT in 1Password\n" "$AGENT"
-    continue
-  fi
-
-  RESPONSE=$(GH_TOKEN="$PAT" gh api /user -i 2>&1 || true)
-
-  if echo "$RESPONSE" | grep -q '"Bad credentials"'; then
-    printf "  %-10s ✗ expired or invalid\n" "$AGENT"
-    NEED_ROTATION+=("$AGENT")
-    continue
-  fi
-
-  EXPIRY=$(echo "$RESPONSE" | grep -i 'github-authentication-token-expiration:' | sed 's/.*: //' | tr -d '\r')
-
-  if [ -z "$EXPIRY" ]; then
-    printf "  %-10s ✓ no expiration\n" "$AGENT"
-    continue
-  fi
-
-  # Parse expiry and compute days left
-  EXPIRY_EPOCH=$(date -j -f "%Y-%m-%d %H:%M:%S UTC" "$EXPIRY" "+%s" 2>/dev/null || date -d "$EXPIRY" "+%s" 2>/dev/null || echo "")
-  if [ -n "$EXPIRY_EPOCH" ]; then
-    NOW=$(date "+%s")
-    DAYS_LEFT=$(( (EXPIRY_EPOCH - NOW) / 86400 ))
-    if [ "$DAYS_LEFT" -le 0 ]; then
-      printf "  %-10s ✗ expired %d days ago\n" "$AGENT" "$(( -DAYS_LEFT ))"
-      NEED_ROTATION+=("$AGENT")
-    elif [ "$DAYS_LEFT" -le 7 ]; then
-      printf "  %-10s ⚠ expires in %d days\n" "$AGENT" "$DAYS_LEFT"
-      NEED_ROTATION+=("$AGENT")
-    else
-      printf "  %-10s ✓ expires in %d days\n" "$AGENT" "$DAYS_LEFT"
-    fi
+EXPIRY_EPOCH=$(date -j -f "%Y-%m-%d %H:%M:%S UTC" "$EXPIRY" "+%s" 2>/dev/null || date -d "$EXPIRY" "+%s" 2>/dev/null || echo "")
+if [ -n "$EXPIRY_EPOCH" ]; then
+  NOW=$(date "+%s")
+  DAYS_LEFT=$(( (EXPIRY_EPOCH - NOW) / 86400 ))
+  if [ "$DAYS_LEFT" -le 0 ]; then
+    echo "✗ $USER — expired $(( -DAYS_LEFT )) days ago"
+    exit 1
+  elif [ "$DAYS_LEFT" -le 7 ]; then
+    echo "⚠ $USER — expires in $DAYS_LEFT days"
   else
-    printf "  %-10s ? expires %s (couldn't parse)\n" "$AGENT" "$EXPIRY"
+    echo "✓ $USER — expires in $DAYS_LEFT days"
   fi
-done
-
-echo ""
-
-if [ ${#NEED_ROTATION[@]} -eq 0 ]; then
-  echo "All tokens are healthy."
 else
-  echo "Need rotation: ${NEED_ROTATION[*]}"
+  echo "? $USER — expires $EXPIRY (couldn't parse)"
 fi
