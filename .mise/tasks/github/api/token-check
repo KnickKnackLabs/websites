@@ -1,0 +1,41 @@
+#!/usr/bin/env bash
+#MISE description="Check GitHub token status (expiry, validity)"
+
+set -e
+
+RESPONSE=$(gh api /user -i 2>&1 || true)
+
+if echo "$RESPONSE" | grep -q '"Bad credentials"'; then
+  echo "✗ Token is expired or invalid"
+  exit 1
+fi
+
+# gh api -i returns headers + JSON body together, so --jq can't be used.
+# Parse the login field from the raw JSON response.
+USER=$(echo "$RESPONSE" | grep -o '"login"\s*:\s*"[^"]*"' | head -1 | cut -d'"' -f4)
+EXPIRY=$(echo "$RESPONSE" | grep -i 'github-authentication-token-expiration:' | sed 's/.*: //' | tr -d '\r')
+
+if [ -z "$EXPIRY" ]; then
+  echo "✓ $USER — no expiration"
+  exit 0
+fi
+
+# GitHub's header format: "2026-04-16 06:02:20 UTC"
+# macOS uses date -j -f, Linux/GNU uses date -d. Try both.
+EXPIRY_EPOCH=$(date -j -f "%Y-%m-%d %H:%M:%S %Z" "$EXPIRY" "+%s" 2>/dev/null \
+  || date -d "$EXPIRY" "+%s" 2>/dev/null \
+  || echo "")
+if [ -n "$EXPIRY_EPOCH" ]; then
+  NOW=$(date "+%s")
+  DAYS_LEFT=$(( (EXPIRY_EPOCH - NOW) / 86400 ))
+  if [ "$DAYS_LEFT" -le 0 ]; then
+    echo "✗ $USER — expired $(( -DAYS_LEFT )) days ago"
+    exit 1
+  elif [ "$DAYS_LEFT" -le 7 ]; then
+    echo "⚠ $USER — expires in $DAYS_LEFT days"
+  else
+    echo "✓ $USER — expires in $DAYS_LEFT days"
+  fi
+else
+  echo "? $USER — expires $EXPIRY (couldn't parse)"
+fi

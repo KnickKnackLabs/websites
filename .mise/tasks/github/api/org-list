@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+#MISE description="List GitHub organization memberships"
+
+set -e
+
+gh api /user/orgs --jq '.[] | "  \(.login) — \(.description // "no description")"'

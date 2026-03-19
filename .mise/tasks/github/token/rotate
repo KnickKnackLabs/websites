@@ -1,0 +1,44 @@
+#!/usr/bin/env bash
+#MISE description="Regenerate a GitHub classic PAT by name"
+#USAGE arg "<token-name>" help="Name of the token to regenerate"
+#USAGE flag "--record" help="Record page artifacts for test fixtures"
+
+set -e
+
+TOKEN_NAME="${usage_token_name:?Usage: websites github:token:rotate <token-name>}"
+PROJECT_DIR="${MISE_CONFIG_ROOT:?MISE_CONFIG_ROOT not set}"
+
+if [ -z "${GITHUB_USERNAME:-}" ] || [ -z "${GITHUB_PASSWORD:-}" ]; then
+  echo "ERROR: GITHUB_USERNAME and GITHUB_PASSWORD env vars required." >&2
+  exit 1
+fi
+
+# --- Recording setup ---
+if [ "${usage_record:-false}" = "true" ]; then
+  RECORD_DIR="$PROJECT_DIR/test/fixtures/$(date +%Y%m%d-%H%M%S)"
+  export WEBSITES_RECORD_DIR="$RECORD_DIR"
+  echo "Recording artifacts to: $RECORD_DIR"
+  echo ""
+fi
+
+# --- Run the Patchright script ---
+OUTPUT=$(
+  shimmer browser:run "$PROJECT_DIR/scripts/github/token-rotate.mjs" -- "$TOKEN_NAME" \
+  2>&1
+) || {
+  echo "$OUTPUT" >&2
+  exit 1
+}
+
+echo "$OUTPUT" >&2
+
+# Extract and output just the token
+NEW_TOKEN=$(echo "$OUTPUT" | grep '^TOKEN:' | tail -1 | sed 's/^TOKEN://')
+
+if [ -z "$NEW_TOKEN" ] || ! echo "$NEW_TOKEN" | grep -q '^ghp_'; then
+  echo "ERROR: Could not extract token from script output" >&2
+  exit 1
+fi
+
+# Output the token on stdout (caller captures this)
+echo "$NEW_TOKEN"
