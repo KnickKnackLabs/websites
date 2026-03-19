@@ -1,0 +1,32 @@
+#!/usr/bin/env bash
+#MISE description="View Mercury dashboard (balances, accounts)"
+#USAGE flag "--json" help="Output raw JSON"
+#USAGE flag "--record" help="Record page artifacts for test fixtures"
+
+set -e
+
+PROJECT_DIR="${MISE_CONFIG_ROOT:?MISE_CONFIG_ROOT not set}"
+
+if [ "${usage_record:-false}" = "true" ]; then
+  export WEBSITES_RECORD_DIR="$PROJECT_DIR/test/fixtures/$(date +%Y%m%d-%H%M%S)"
+  echo "Recording artifacts to: $WEBSITES_RECORD_DIR" >&2
+fi
+
+OUTPUT=$(shimmer browser:run -s mercury.com "$PROJECT_DIR/scripts/mercury/home.mjs" 2>&1 | grep '^{') || true
+
+if [ -z "$OUTPUT" ]; then
+  echo "Failed to fetch Mercury dashboard." >&2
+  exit 1
+fi
+
+if [ "${usage_json:-false}" = "true" ]; then
+  echo "$OUTPUT"
+else
+  echo ""
+  echo "$(echo "$OUTPUT" | jq -r '.greeting // "Mercury"')"
+  echo ""
+  BALANCE=$(echo "$OUTPUT" | jq -r '.balance // ""')
+  [ -n "$BALANCE" ] && echo "$BALANCE" | head -3 && echo ""
+  CREDIT=$(echo "$OUTPUT" | jq -r '.creditCard // ""')
+  [ -n "$CREDIT" ] && echo "$CREDIT" | head -3 && echo ""
+fi

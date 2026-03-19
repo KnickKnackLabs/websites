@@ -1,0 +1,35 @@
+#!/usr/bin/env bash
+#MISE description="View Mercury transactions"
+#USAGE flag "--json" help="Output raw JSON"
+#USAGE flag "--record" help="Record page artifacts for test fixtures"
+
+set -e
+
+PROJECT_DIR="${MISE_CONFIG_ROOT:?MISE_CONFIG_ROOT not set}"
+
+if [ "${usage_record:-false}" = "true" ]; then
+  export WEBSITES_RECORD_DIR="$PROJECT_DIR/test/fixtures/$(date +%Y%m%d-%H%M%S)"
+  echo "Recording artifacts to: $WEBSITES_RECORD_DIR" >&2
+fi
+
+OUTPUT=$(shimmer browser:run -s mercury.com "$PROJECT_DIR/scripts/mercury/transactions.mjs" 2>&1 | grep '^\[') || true
+
+if [ -z "$OUTPUT" ]; then
+  echo "Failed to fetch Mercury transactions." >&2
+  exit 1
+fi
+
+if [ "${usage_json:-false}" = "true" ]; then
+  echo "$OUTPUT"
+else
+  COUNT=$(echo "$OUTPUT" | jq 'length')
+  echo ""
+  echo "Transactions ($COUNT)"
+  echo ""
+  printf "%-10s %-25s %12s %-18s %s\n" "Date" "To/From" "Amount" "Account" "Category"
+  printf "%-10s %-25s %12s %-18s %s\n" "------" "-------" "------" "-------" "--------"
+  echo "$OUTPUT" | jq -r '.[] | "\(.date)|\(.toFrom)|\(.amount)|\(.account)|\(.category)"' | while IFS='|' read -r date tf amt acct cat; do
+    printf "%-10s %-25s %12s %-18s %s\n" "$date" "${tf:0:25}" "$amt" "${acct:0:18}" "$cat"
+  done
+  echo ""
+fi
