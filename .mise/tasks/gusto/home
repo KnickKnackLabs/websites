@@ -1,0 +1,54 @@
+#!/usr/bin/env bash
+#MISE description="View Gusto dashboard (tasks, payments, upcoming)"
+#USAGE flag "--json" help="Output raw JSON"
+#USAGE flag "--record" help="Record page artifacts for test fixtures"
+
+set -e
+
+PROJECT_DIR="${MISE_CONFIG_ROOT:?MISE_CONFIG_ROOT not set}"
+
+# --- Recording setup ---
+if [ "${usage_record:-false}" = "true" ]; then
+  RECORD_DIR="$PROJECT_DIR/test/fixtures/$(date +%Y%m%d-%H%M%S)"
+  export WEBSITES_RECORD_DIR="$RECORD_DIR"
+  echo "Recording artifacts to: $RECORD_DIR" >&2
+fi
+
+# --- Run the Patchright script ---
+OUTPUT=$(shimmer browser:run "$PROJECT_DIR/scripts/gusto/home.mjs" 2>&1 | grep '^{') || true
+
+if [ -z "$OUTPUT" ]; then
+  echo "Failed to fetch Gusto dashboard." >&2
+  exit 1
+fi
+
+if [ "${usage_json:-false}" = "true" ]; then
+  echo "$OUTPUT"
+else
+  echo ""
+  echo "$(echo "$OUTPUT" | jq -r '.greeting')"
+  echo ""
+
+  TASK_COUNT=$(echo "$OUTPUT" | jq '.tasks | length')
+  if [ "$TASK_COUNT" -gt 0 ]; then
+    echo "Tasks ($TASK_COUNT):"
+    echo "$OUTPUT" | jq -r '.tasks[]' | while read -r task; do
+      echo "  - $task"
+    done
+    echo ""
+  fi
+
+  PAYMENTS=$(echo "$OUTPUT" | jq -r '.payments')
+  if [ -n "$PAYMENTS" ] && [ "$PAYMENTS" != "" ]; then
+    echo "Payments:"
+    echo "  $PAYMENTS"
+    echo ""
+  fi
+
+  UPCOMING=$(echo "$OUTPUT" | jq -r '.upcoming')
+  if [ -n "$UPCOMING" ] && [ "$UPCOMING" != "" ]; then
+    echo "Upcoming:"
+    echo "  $UPCOMING"
+    echo ""
+  fi
+fi
