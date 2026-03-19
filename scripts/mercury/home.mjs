@@ -8,8 +8,11 @@ export const site = 'mercury.com';
 
 // --- Pure functions (testable) ---
 
-export function normalizeText(str) {
-  return str.replace(/\s+/g, ' ').trim();
+// Parse an account line like "Checking ••9145  $4,593.59" into structured data.
+export function parseAccountLine(text) {
+  const match = text.match(/^(.+?)\s+(\$[\d,.]+)$/);
+  if (!match) return null;
+  return { name: match[1].trim(), balance: match[2] };
 }
 
 // --- Script entry point ---
@@ -24,44 +27,65 @@ export default async function({ page }) {
   record('mercury-home.html', await page.content());
 
   const data = await page.evaluate(() => {
+    // Greeting
     const greeting = document.querySelector('h1')?.innerText?.trim() || '';
 
-    // Account cards — look for balance displays
+    // Get all text from the dashboard content area (not the sidebar nav)
+    const content = document.querySelector('[class*="dashboardContentWrapper"]')
+      || document.querySelector('[class*="page-content"]')
+      || document.querySelector('main');
+    const fullText = content?.innerText || '';
+
+    // Extract Mercury balance — look for the dollar amount after "Mercury balance"
+    let mercuryBalance = '';
+    const balanceMatch = fullText.match(/Mercury balance[^\$]*(\$[\d,.]+)/);
+    if (balanceMatch) mercuryBalance = balanceMatch[1];
+
+    // Extract account list — look for account names followed by dollar amounts
     const accounts = [];
-    const accountRows = document.querySelectorAll('[class*="Accounts"] [class*="account"], [class*="account-row"], tr');
-    // Fallback: extract from the accounts section
-    const accountSection = [...document.querySelectorAll('h2, h3')]
-      .find(h => h.innerText?.includes('Accounts'));
-    if (accountSection) {
-      const container = accountSection.closest('div[class]');
-      const items = container?.querySelectorAll('a, div[role="button"], [class*="row"]') || [];
-      items.forEach(item => {
-        const text = item.innerText?.trim();
-        if (text && text.includes('$')) {
-          accounts.push(text);
+    const accountPatterns = [
+      /Credit Card\s+(\$[\d,.]+)/,
+      /Checking\s+[•·]+\s*\d+\s+(\$[\d,.]+)/,
+      /Savings\s+[•·]+\s*\d+\s+(\$[\d,.]+)/,
+    ];
+    for (const pat of accountPatterns) {
+      const m = fullText.match(pat);
+      if (m) {
+        const name = pat.source.split('\\s')[0];
+        accounts.push({ name, balance: m[1] });
+      }
+    }
+
+    // Fallback: find the Accounts section and extract lines
+    if (accounts.length === 0) {
+      const accountLines = fullText.split('\n')
+        .filter(l => l.match(/\$[\d,.]+/) && (l.includes('Checking') || l.includes('Savings') || l.includes('Credit')));
+      accountLines.forEach(line => {
+        const parts = line.trim().split(/\s{2,}/);
+        if (parts.length >= 2) {
+          accounts.push({ name: parts[0], balance: parts[parts.length - 1] });
         }
       });
     }
 
-    // Mercury balance (main display)
-    const balanceEl = [...document.querySelectorAll('h2, [class*="balance"], [class*="Balance"]')]
-      .find(el => el.innerText?.includes('Mercury balance'));
-    const balanceContainer = balanceEl?.closest('div[class]');
-    const balance = balanceContainer?.innerText?.trim() || '';
+    // Credit card details
+    let creditCard = null;
+    const creditMatch = fullText.match(/Credit Card\s*\n\s*(\$[\d,.]+)[\s\S]*?(\$[\d,.]+ available)/);
+    if (creditMatch) {
+      creditCard = { balance: creditMatch[1], available: creditMatch[2] };
+    }
 
-    // Credit card section
-    const creditEl = [...document.querySelectorAll('h3, h2, [class*="card"]')]
-      .find(el => el.innerText?.includes('Credit Card'));
-    const creditContainer = creditEl?.closest('div[class]');
-    const creditCard = creditContainer?.innerText?.trim() || '';
+    // Money flow stats
+    let moneyIn = '';
+    let moneyOut = '';
+    const inMatch = fullText.match(/[↗→]?\s*(\$[\d,.]+K?)\s/);
+    const flowMatch = fullText.match(/(\$[\d,.]+K?)\s+[↘↓]?\s*[~−-]?(\$[\d,.]+K?)/);
+    if (flowMatch) {
+      moneyIn = flowMatch[1];
+      moneyOut = flowMatch[2];
+    }
 
-    // Summary stats (money in / money out)
-    const statsText = [...document.querySelectorAll('[class*="stat"], [class*="summary"]')]
-      .map(el => el.innerText?.trim())
-      .filter(t => t && t.includes('$'))
-      .join(' | ');
-
-    return { greeting, balance, accounts, creditCard, stats: statsText };
+    return { greeting, mercuryBalance, accounts, creditCard, moneyIn, moneyOut };
   });
 
   console.log(JSON.stringify(data));
