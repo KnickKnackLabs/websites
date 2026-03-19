@@ -94,9 +94,12 @@ export default async function({ page, args }) {
   await regenerateBtn.waitFor({ state: 'visible', timeout: 5000 });
   await regenerateBtn.click();
 
-  // Wait for the new token to appear
+  // Wait for the new token to appear (wait for the token display element instead of a fixed sleep)
   await page.waitForLoadState('domcontentloaded');
-  await page.waitForTimeout(2000);
+  const tokenDisplayLocator = page.locator('input#new-oauth-token, [data-clipboard-text^="ghp_"]').first();
+  await tokenDisplayLocator.waitFor({ state: 'visible', timeout: 15000 }).catch(() => {
+    console.error('Warning: token display element not found within timeout, will try fallback methods.');
+  });
   record(`regenerated-page-${agent}.html`, await page.content());
 
   // --- Capture the new token ---
@@ -104,7 +107,7 @@ export default async function({ page, args }) {
 
   // Method 1: input#new-oauth-token (GitHub's token display input)
   const tokenInput = page.locator('input#new-oauth-token');
-  if (await tokenInput.isVisible({ timeout: 5000 }).catch(() => false)) {
+  if (await tokenInput.isVisible({ timeout: 3000 }).catch(() => false)) {
     newToken = await tokenInput.getAttribute('value');
   }
 

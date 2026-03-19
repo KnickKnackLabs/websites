@@ -22,9 +22,18 @@ export function parseEmailId(line) {
 }
 
 // Extract a verification code (6-8 digits) from email body text.
+// Looks for digits near verification-related context to avoid matching timestamps/IDs.
 export function parseVerificationCode(emailText) {
-  const match = emailText.match(/\b(\d{6,8})\b/);
-  return match ? match[1] : null;
+  // Try contextual patterns first (near "verification", "code", etc.)
+  const contextual = emailText.match(/(?:verification|verify|code|otp)[:\s]+(?:is\s+)?(\d{6,8})\b/i)
+    || emailText.match(/\b(\d{6,8})\s*(?:is your|verification|code)/i);
+  if (contextual) return contextual[1];
+
+  // Fallback: standalone 6-8 digit number on its own line or surrounded by whitespace
+  const standalone = emailText.match(/(?:^|\n)\s*(\d{6,8})\s*(?:\n|$)/m);
+  if (standalone) return standalone[1];
+
+  return null;
 }
 
 // --- Email fetching (injectable for testing) ---

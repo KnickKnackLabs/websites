@@ -22,7 +22,9 @@ export async function login(page, { agent, username, password }) {
   await page.click('input[type="submit"], button[type="submit"]');
 
   // Wait for navigation away from login form submission
-  await page.waitForURL(url => !url.toString().endsWith('/session'), { timeout: 30000 }).catch(() => {});
+  await page.waitForURL(url => !url.toString().endsWith('/session'), { timeout: 30000 }).catch(() => {
+    console.error(`Warning: login navigation may have failed. Current URL: ${page.url()}`);
+  });
 
   const postLoginUrl = page.url();
   record(`login-post-submit-${agent}.html`, await page.content());
@@ -36,7 +38,7 @@ export async function login(page, { agent, username, password }) {
       throw new Error('Could not find verification code in email.');
     }
 
-    console.log(`Found verification code: ${code}`);
+    console.error('Got verification code.');
 
     // GitHub device verification: look for the OTP input
     const otpInput = page.locator('#otp, input[name="otp"], input[autocomplete="one-time-code"]').first();

@@ -10,7 +10,9 @@ if echo "$RESPONSE" | grep -q '"Bad credentials"'; then
   exit 1
 fi
 
-USER=$(echo "$RESPONSE" | grep -o '"login":"[^"]*"' | head -1 | cut -d'"' -f4)
+# gh api -i returns headers + JSON body together, so --jq can't be used.
+# Parse the login field from the raw JSON response.
+USER=$(echo "$RESPONSE" | grep -o '"login"\s*:\s*"[^"]*"' | head -1 | cut -d'"' -f4)
 EXPIRY=$(echo "$RESPONSE" | grep -i 'github-authentication-token-expiration:' | sed 's/.*: //' | tr -d '\r')
 
 if [ -z "$EXPIRY" ]; then
@@ -18,7 +20,11 @@ if [ -z "$EXPIRY" ]; then
   exit 0
 fi
 
-EXPIRY_EPOCH=$(date -j -f "%Y-%m-%d %H:%M:%S UTC" "$EXPIRY" "+%s" 2>/dev/null || date -d "$EXPIRY" "+%s" 2>/dev/null || echo "")
+# GitHub's header format: "2026-04-16 06:02:20 UTC"
+# macOS uses date -j -f, Linux/GNU uses date -d. Try both.
+EXPIRY_EPOCH=$(date -j -f "%Y-%m-%d %H:%M:%S %Z" "$EXPIRY" "+%s" 2>/dev/null \
+  || date -d "$EXPIRY" "+%s" 2>/dev/null \
+  || echo "")
 if [ -n "$EXPIRY_EPOCH" ]; then
   NOW=$(date "+%s")
   DAYS_LEFT=$(( (EXPIRY_EPOCH - NOW) / 86400 ))
