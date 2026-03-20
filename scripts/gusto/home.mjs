@@ -7,6 +7,8 @@
 
 import { record } from '../record.mjs';
 
+export const site = 'gusto.com';
+
 // --- Pure functions (testable) ---
 
 // Parse task card text into structured fields.

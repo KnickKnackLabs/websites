@@ -8,12 +8,6 @@ import { record } from '../record.mjs';
 
 export const site = 'mercury.com';
 
-// --- Pure functions (testable) ---
-
-export function normalizeText(str) {
-  return str.replace(/\s+/g, ' ').trim();
-}
-
 // --- Script entry point ---
 
 export default async function({ page }) {

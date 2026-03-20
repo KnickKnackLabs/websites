@@ -15,7 +15,7 @@ if [ "${usage_record:-false}" = "true" ]; then
 fi
 
 # --- Run the Patchright script ---
-OUTPUT=$(shimmer browser:run "$PROJECT_DIR/scripts/gusto/home.mjs" 2>&1 | grep '^{') || true
+OUTPUT=$(shimmer browser:run -s gusto.com "$PROJECT_DIR/scripts/gusto/home.mjs" 2>&1 | grep '^{') || true
 
 if [ -z "$OUTPUT" ]; then
   echo "Failed to fetch Gusto dashboard." >&2
@@ -38,17 +38,8 @@ else
     echo ""
   fi
 
-  PAYMENTS=$(echo "$OUTPUT" | jq -r '.payments')
-  if [ -n "$PAYMENTS" ] && [ "$PAYMENTS" != "" ]; then
-    echo "Payments:"
-    echo "  $PAYMENTS"
-    echo ""
-  fi
-
-  UPCOMING=$(echo "$OUTPUT" | jq -r '.upcoming')
-  if [ -n "$UPCOMING" ] && [ "$UPCOMING" != "" ]; then
-    echo "Upcoming:"
-    echo "  $UPCOMING"
-    echo ""
+  SIDEBAR_COUNT=$(echo "$OUTPUT" | jq '.sidebar | length')
+  if [ "$SIDEBAR_COUNT" -gt 0 ]; then
+    echo "$OUTPUT" | jq -r '.sidebar[] | "\(.heading):\n  \(.body)\n"'
   fi
 fi

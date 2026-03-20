@@ -6,13 +6,11 @@
 // Usage: shimmer browser:run ./scripts/gusto/payroll-history.mjs
 
 import { record } from '../record.mjs';
+import { normalizeText } from '../utils.mjs';
+
+export const site = 'gusto.com';
 
 // --- Pure functions (testable) ---
-
-// Normalize whitespace: collapse newlines and multiple spaces into single spaces.
-export function normalizeText(str) {
-  return str.replace(/\s+/g, ' ').trim();
-}
 
 // Extract just the status label (e.g. "Complete") from a status cell
 // that may contain extra action links like "Adjust payroll".

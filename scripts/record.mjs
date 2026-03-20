@@ -22,5 +22,5 @@ export function record(filename, data) {
   if (!recordDir) return;
   mkdirSync(recordDir, { recursive: true });
   writeFileSync(join(recordDir, filename), data, 'utf-8');
-  console.log(`[record] ${filename}`);
+  console.error(`[record] ${filename}`);
 }

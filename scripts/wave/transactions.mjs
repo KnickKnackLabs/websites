@@ -6,21 +6,10 @@
 // Usage: shimmer browser:run -s waveapps.com ./scripts/wave/transactions.mjs
 
 import { record } from '../record.mjs';
+import { normalizeText } from '../utils.mjs';
+import { parseBusinessId } from './utils.mjs';
 
 export const site = 'waveapps.com';
-
-// --- Pure functions (testable) ---
-
-// Normalize whitespace.
-export function normalizeText(str) {
-  return str.replace(/\s+/g, ' ').trim();
-}
-
-// Extract business ID from a Wave URL.
-export function parseBusinessId(url) {
-  const match = url.match(/waveapps\.com\/([a-f0-9-]{36})/);
-  return match ? match[1] : null;
-}
 
 // --- Script entry point ---
 
