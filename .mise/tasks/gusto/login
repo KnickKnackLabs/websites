@@ -1,0 +1,42 @@
+#!/usr/bin/env bash
+#MISE description="Login to Gusto and save auth state"
+#USAGE flag "-u --username <username>" help="Gusto username/email"
+#USAGE flag "-p --password <password>" help="Gusto password"
+#USAGE flag "--record" help="Record page artifacts for test fixtures"
+
+set -e
+
+PROJECT_DIR="${MISE_CONFIG_ROOT:?MISE_CONFIG_ROOT not set}"
+USERNAME="${usage_username:-}"
+PASSWORD="${usage_password:-}"
+
+# --- Recording setup ---
+if [ "${usage_record:-false}" = "true" ]; then
+  RECORD_DIR="$PROJECT_DIR/test/fixtures/$(date +%Y%m%d-%H%M%S)"
+  export WEBSITES_RECORD_DIR="$RECORD_DIR"
+  echo "Recording artifacts to: $RECORD_DIR" >&2
+fi
+
+# --- Launch headed browser, run login script, save auth ---
+BROWSER_ID=$(shimmer browser:launch --headed)
+echo "Browser: $BROWSER_ID" >&2
+
+SCRIPT_ARGS=()
+if [ -n "$USERNAME" ] && [ -n "$PASSWORD" ]; then
+  SCRIPT_ARGS+=(-- --username "$USERNAME" --password "$PASSWORD")
+fi
+
+shimmer browser:run -b "$BROWSER_ID" -s gusto.com \
+  "$PROJECT_DIR/scripts/gusto/login.mjs" \
+  "${SCRIPT_ARGS[@]}" || {
+    echo "Login failed." >&2
+    shimmer browser:close "$BROWSER_ID" 2>/dev/null || true
+    exit 1
+  }
+
+# Save auth state from the authenticated browser
+shimmer browser:save-auth gusto.com -b "$BROWSER_ID"
+
+# Clean up
+shimmer browser:close "$BROWSER_ID"
+echo "Gusto auth saved."

@@ -1,0 +1,38 @@
+#!/usr/bin/env bash
+#MISE description="View payroll history"
+#USAGE flag "--json" help="Output raw JSON"
+#USAGE flag "--record" help="Record page artifacts for test fixtures"
+
+set -e
+
+PROJECT_DIR="${MISE_CONFIG_ROOT:?MISE_CONFIG_ROOT not set}"
+
+# --- Recording setup ---
+if [ "${usage_record:-false}" = "true" ]; then
+  RECORD_DIR="$PROJECT_DIR/test/fixtures/$(date +%Y%m%d-%H%M%S)"
+  export WEBSITES_RECORD_DIR="$RECORD_DIR"
+  echo "Recording artifacts to: $RECORD_DIR" >&2
+fi
+
+# --- Run the Patchright script ---
+OUTPUT=$(shimmer browser:run -s gusto.com "$PROJECT_DIR/scripts/gusto/payroll-history.mjs" 2>&1 | grep '^\[') || true
+
+if [ -z "$OUTPUT" ]; then
+  echo "Failed to fetch payroll history." >&2
+  exit 1
+fi
+
+if [ "${usage_json:-false}" = "true" ]; then
+  echo "$OUTPUT"
+else
+  COUNT=$(echo "$OUTPUT" | jq 'length')
+  echo ""
+  echo "Payroll History ($COUNT payrolls)"
+  echo ""
+  printf "%-14s %-10s %-16s %-10s %s\n" "Payday" "Type" "Pay Period" "Status" "Total"
+  printf "%-14s %-10s %-16s %-10s %s\n" "------" "----" "----------" "------" "-----"
+  echo "$OUTPUT" | jq -r '.[] | "\(.payday)|\(.type)|\(.payPeriod)|\(.status)|\(.total)"' | while IFS='|' read -r payday type period status total; do
+    printf "%-14s %-10s %-16s %-10s %s\n" "$payday" "$type" "$period" "$status" "$total"
+  done
+  echo ""
+fi

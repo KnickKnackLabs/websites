@@ -1,0 +1,35 @@
+#!/usr/bin/env bash
+#MISE description="View Wave transactions"
+#USAGE flag "--json" help="Output raw JSON"
+#USAGE flag "--record" help="Record page artifacts for test fixtures"
+
+set -e
+
+PROJECT_DIR="${MISE_CONFIG_ROOT:?MISE_CONFIG_ROOT not set}"
+
+if [ "${usage_record:-false}" = "true" ]; then
+  export WEBSITES_RECORD_DIR="$PROJECT_DIR/test/fixtures/$(date +%Y%m%d-%H%M%S)"
+  echo "Recording artifacts to: $WEBSITES_RECORD_DIR" >&2
+fi
+
+OUTPUT=$(shimmer browser:run -s waveapps.com "$PROJECT_DIR/scripts/wave/transactions.mjs" 2>&1 | grep '^\[') || true
+
+if [ -z "$OUTPUT" ]; then
+  echo "Failed to fetch Wave transactions." >&2
+  exit 1
+fi
+
+if [ "${usage_json:-false}" = "true" ]; then
+  echo "$OUTPUT"
+else
+  COUNT=$(echo "$OUTPUT" | jq 'length')
+  echo ""
+  echo "Transactions ($COUNT)"
+  echo ""
+  printf "%-14s %-25s %-15s %-18s %s\n" "Date" "Description" "Account" "Category" "Amount"
+  printf "%-14s %-25s %-15s %-18s %s\n" "------" "-----------" "-------" "--------" "------"
+  echo "$OUTPUT" | jq -r '.[] | "\(.date)|\(.description)|\(.account)|\(.category)|\(.amount)"' | while IFS='|' read -r date desc acct cat amt; do
+    printf "%-14s %-25s %-15s %-18s %s\n" "$date" "${desc:0:25}" "${acct:0:15}" "${cat:0:18}" "$amt"
+  done
+  echo ""
+fi

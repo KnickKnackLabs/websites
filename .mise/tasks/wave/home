@@ -1,0 +1,37 @@
+#!/usr/bin/env bash
+#MISE description="View Wave dashboard summary"
+#USAGE flag "--json" help="Output raw JSON"
+#USAGE flag "--record" help="Record page artifacts for test fixtures"
+
+set -e
+
+PROJECT_DIR="${MISE_CONFIG_ROOT:?MISE_CONFIG_ROOT not set}"
+
+if [ "${usage_record:-false}" = "true" ]; then
+  export WEBSITES_RECORD_DIR="$PROJECT_DIR/test/fixtures/$(date +%Y%m%d-%H%M%S)"
+  echo "Recording artifacts to: $WEBSITES_RECORD_DIR" >&2
+fi
+
+OUTPUT=$(shimmer browser:run -s waveapps.com "$PROJECT_DIR/scripts/wave/home.mjs" 2>&1 | grep '^{') || true
+
+if [ -z "$OUTPUT" ]; then
+  echo "Failed to fetch Wave dashboard." >&2
+  exit 1
+fi
+
+if [ "${usage_json:-false}" = "true" ]; then
+  echo "$OUTPUT"
+else
+  echo ""
+  BUSINESS=$(echo "$OUTPUT" | jq -r '.businessName // "Wave"')
+  BALANCE=$(echo "$OUTPUT" | jq -r '.accountBalance // ""')
+  echo "$BUSINESS"
+  [ -n "$BALANCE" ] && echo "  Balance: $BALANCE"
+  echo ""
+
+  SECTION_COUNT=$(echo "$OUTPUT" | jq '.sections | length')
+  if [ "$SECTION_COUNT" -gt 0 ]; then
+    echo "$OUTPUT" | jq -r '.sections[] | "  \(.title)"'
+    echo ""
+  fi
+fi
