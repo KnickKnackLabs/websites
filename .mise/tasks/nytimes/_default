@@ -16,19 +16,8 @@ if [ "${usage_record:-false}" = "true" ]; then
 fi
 
 # --- Browser setup ---
-BROWSER_ARGS=()
-if [ "${usage_keep:-false}" = "true" ]; then
-  BROWSER_ID=$(shimmer browser:list 2>/dev/null | awk '/^b-.*running/ {print $1; exit}')
-  if [ -z "$BROWSER_ID" ]; then
-    BROWSER_ID=$(shimmer browser:launch --headed 2>/dev/null | head -1)
-  fi
-  if [ -n "$BROWSER_ID" ]; then
-    BROWSER_ARGS+=(--browser "$BROWSER_ID")
-    echo "Browser: $BROWSER_ID (will stay open)" >&2
-  else
-    BROWSER_ARGS+=(--headed)
-  fi
-fi
+source "$PROJECT_DIR/lib/browser.sh"
+setup_browser "${usage_keep:-false}"
 
 # --- Run ---
 OUTPUT=$(shimmer browser:run "${BROWSER_ARGS[@]}" "$PROJECT_DIR/scripts/nytimes/headlines.mjs" 2>&1) || {

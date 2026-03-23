@@ -56,12 +56,12 @@ export default async function({ page, args }) {
 
   // Wait for the project board to render (React SPA — DOM loads before content)
   console.error('Waiting for project board to render...');
-  await page.waitForSelector('a[href*="/issues/"]', { timeout: 15000 }).catch(() => {
-    console.error('Warning: no issue links found within timeout. Board may be empty or still loading.');
+  await page.waitForSelector('[role="row"]', { timeout: 15000 }).catch(() => {
+    // Fallback: try waiting for any issue link
+    return page.waitForSelector('a[href*="/issues/"]', { timeout: 5000 }).catch(() => {
+      console.error('Warning: no rows or issue links found. Board may be empty or still loading.');
+    });
   });
-
-  // Give React a moment to finish rendering
-  await page.waitForTimeout(2000);
 
   record('project-board.html', await page.content());
 
@@ -94,11 +94,21 @@ export default async function({ page, args }) {
   const rowCount = await rows.count().catch(() => 0);
 
   if (rowCount > 1) { // >1 because first row is header
+    // Read column headers from the first row
+    const headerRow = rows.nth(0);
+    const headerCells = headerRow.locator('[role="columnheader"]');
+    const headerCount = await headerCells.count();
+    const columnNames = [];
+    for (let i = 0; i < headerCount; i++) {
+      columnNames.push((await headerCells.nth(i).textContent()).trim());
+    }
+    console.error(`Columns: ${columnNames.join(', ')}`);
+
     console.error(`Found ${rowCount - 1} table rows. Extracting...`);
 
     for (let i = 1; i < rowCount; i++) { // skip header row
       const row = rows.nth(i);
-      const item = await extractTableRow(row, page);
+      const item = await extractTableRow(row, page, columnNames);
       if (item) items.push(item);
     }
   }
@@ -165,7 +175,8 @@ export default async function({ page, args }) {
 }
 
 // Extract an item from a table view row.
-async function extractTableRow(row, page) {
+// columnNames: array of header labels read from the header row.
+async function extractTableRow(row, page, columnNames = []) {
   try {
     // The first cell usually contains the issue title with a link
     const titleLink = row.locator('a[href*="/issues/"]').first();
@@ -179,12 +190,16 @@ async function extractTableRow(row, page) {
 
     if (!ref) return null;
 
-    // Extract all gridcell text content for field values
+    // Extract all gridcell text content and map to column names
     const cells = row.locator('[role="gridcell"]');
     const cellCount = await cells.count();
-    const cellTexts = [];
+    const fields = {};
     for (let i = 0; i < cellCount; i++) {
-      cellTexts.push((await cells.nth(i).textContent()).trim());
+      const text = (await cells.nth(i).textContent()).trim();
+      const colName = columnNames[i];
+      if (colName && text) {
+        fields[colName] = text;
+      }
     }
 
     // Try to find assignees (avatar images with alt text)
@@ -196,9 +211,8 @@ async function extractTableRow(row, page) {
       if (alt) assignees.push(alt.replace(/^@/, ''));
     }
 
-    // Infer status from cell texts — look for known status values
-    const knownStatuses = ['Todo', 'In Progress', 'Done', 'Backlog', 'Ready'];
-    const status = cellTexts.find(t => knownStatuses.includes(t)) || null;
+    // Status comes from whatever column is named "Status"
+    const status = fields['Status'] || null;
 
     return {
       title,
@@ -206,7 +220,7 @@ async function extractTableRow(row, page) {
       repo: ref.repo,
       status,
       assignees,
-      cellTexts // raw cell data for debugging and future field mapping
+      fields
     };
   } catch (err) {
     console.error(`Failed to extract row: ${err.message}`);

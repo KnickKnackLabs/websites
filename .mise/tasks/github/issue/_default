@@ -2,11 +2,11 @@
 #MISE description="Open a GitHub issue in the browser"
 #USAGE arg "<issue>" help="Issue reference (owner/repo#number or full URL)"
 #USAGE flag "--keep" help="Keep the browser open after loading"
-#USAGE flag "--browser <browser>" help="Persistent browser ID to use"
 
 set -euo pipefail
 
 ISSUE="${usage_issue}"
+PROJECT_DIR="${MISE_CONFIG_ROOT:?MISE_CONFIG_ROOT not set}"
 
 # Parse owner/repo#number format
 if [[ "$ISSUE" =~ ^https:// ]]; then
@@ -20,18 +20,9 @@ else
   exit 1
 fi
 
-BROWSER_ARGS=()
-if [ -n "${usage_browser:-}" ]; then
-  BROWSER_ARGS+=(--browser "${usage_browser}")
-elif [ "${usage_keep:-false}" = "true" ]; then
-  BROWSER_ID=$(shimmer browser:launch --headed 2>/dev/null | grep -o 'browser-[a-z0-9-]*' || true)
-  if [ -n "$BROWSER_ID" ]; then
-    BROWSER_ARGS+=(--browser "$BROWSER_ID")
-    echo "Browser: $BROWSER_ID (will stay open)" >&2
-  else
-    BROWSER_ARGS+=(--headed)
-  fi
-fi
+# --- Browser setup ---
+source "$PROJECT_DIR/lib/browser.sh"
+setup_browser "${usage_keep:-false}"
 
 shimmer browser:goto "${BROWSER_ARGS[@]}" "$URL"
 
