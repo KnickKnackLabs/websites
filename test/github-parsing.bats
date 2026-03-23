@@ -180,3 +180,29 @@ run_js() {
   "
   [ "$output" = "null" ]
 }
+
+# --- parseIssueRef (project-view.mjs) ---
+
+@test "parseIssueRef: extracts repo and number from issue URL path" {
+  run_js "
+    import { parseIssueRef } from '$SCRIPTS_DIR/project-view.mjs';
+    console.log(JSON.stringify(parseIssueRef('/KnickKnackLabs/shimmer/issues/608')));
+  "
+  [ "$output" = '{"repo":"KnickKnackLabs/shimmer","number":608}' ]
+}
+
+@test "parseIssueRef: works with full GitHub URL" {
+  run_js "
+    import { parseIssueRef } from '$SCRIPTS_DIR/project-view.mjs';
+    console.log(JSON.stringify(parseIssueRef('https://github.com/ricon-family/or/issues/42')));
+  "
+  [ "$output" = '{"repo":"ricon-family/or","number":42}' ]
+}
+
+@test "parseIssueRef: returns null for non-issue paths" {
+  run_js "
+    import { parseIssueRef } from '$SCRIPTS_DIR/project-view.mjs';
+    console.log(parseIssueRef('/KnickKnackLabs/shimmer/pull/123'));
+  "
+  [ "$output" = "null" ]
+}

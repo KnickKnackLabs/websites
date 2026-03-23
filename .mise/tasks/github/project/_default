@@ -1,0 +1,64 @@
+#!/usr/bin/env bash
+#MISE description="View a GitHub Project board — extract items and optionally keep the browser open"
+#USAGE arg "<owner>" help="Organization or user that owns the project"
+#USAGE arg "<project>" help="Project number"
+#USAGE flag "--view <view>" help="View name to navigate to"
+#USAGE flag "--keep" help="Keep the browser open after extracting data"
+#USAGE flag "--json" help="Output raw JSON instead of a table"
+#USAGE flag "--record" help="Record page artifacts for test fixtures"
+
+set -euo pipefail
+
+OWNER="${usage_owner}"
+PROJECT="${usage_project}"
+PROJECT_DIR="${MISE_CONFIG_ROOT:?MISE_CONFIG_ROOT not set}"
+
+# --- Recording setup ---
+if [ "${usage_record:-false}" = "true" ]; then
+  RECORD_DIR="$PROJECT_DIR/test/fixtures/$(date +%Y%m%d-%H%M%S)"
+  export WEBSITES_RECORD_DIR="$RECORD_DIR"
+  echo "Recording artifacts to: $RECORD_DIR" >&2
+fi
+
+# --- Browser setup ---
+BROWSER_ARGS=()
+if [ "${usage_keep:-false}" = "true" ]; then
+  # Launch a persistent headed browser, pass its ID to the script
+  BROWSER_ID=$(shimmer browser:launch --headed 2>/dev/null | grep -o 'browser-[a-z0-9-]*' || true)
+  if [ -n "$BROWSER_ID" ]; then
+    BROWSER_ARGS+=(--browser "$BROWSER_ID")
+    echo "Browser: $BROWSER_ID (will stay open)" >&2
+  else
+    BROWSER_ARGS+=(--headed)
+    echo "Warning: could not launch persistent browser, using headed ephemeral" >&2
+  fi
+fi
+
+# --- Run the Patchright script ---
+SCRIPT_ARGS=("${BROWSER_ARGS[@]}" "$PROJECT_DIR/scripts/github/project-view.mjs" -- "${OWNER}" "${PROJECT}")
+if [ -n "${usage_view:-}" ]; then
+  SCRIPT_ARGS+=("${usage_view}")
+fi
+
+OUTPUT=$(shimmer browser:run "${SCRIPT_ARGS[@]}" 2>&1) || {
+  echo "$OUTPUT" >&2
+  exit 1
+}
+
+# Extract JSON (items are output as one JSON array)
+JSON=$(echo "$OUTPUT" | grep '^\[')
+
+if [ -z "$JSON" ]; then
+  echo "$OUTPUT" >&2
+  echo "No items found or failed to extract project data." >&2
+  exit 1
+fi
+
+if [ "${usage_json:-false}" = "true" ]; then
+  echo "$JSON" | jq .
+else
+  ITEM_COUNT=$(echo "$JSON" | jq 'length')
+  echo "Project: ${OWNER}/${PROJECT} ($ITEM_COUNT items)"
+  echo ""
+  echo "$JSON" | jq -r '.[] | "  \(.repo)#\(.number)  \(.status // "—")  \(.title)  [\(.assignees | join(", "))]"'
+fi
