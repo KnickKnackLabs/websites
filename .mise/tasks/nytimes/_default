@@ -1,0 +1,44 @@
+#!/usr/bin/env bash
+#MISE description="Read NYTimes front page headlines"
+#USAGE flag "--keep" help="Keep the browser open after extracting headlines"
+#USAGE flag "--json" help="Output raw JSON"
+#USAGE flag "--record" help="Record page artifacts for test fixtures"
+
+set -euo pipefail
+
+PROJECT_DIR="${MISE_CONFIG_ROOT:?MISE_CONFIG_ROOT not set}"
+
+# --- Recording setup ---
+if [ "${usage_record:-false}" = "true" ]; then
+  RECORD_DIR="$PROJECT_DIR/test/fixtures/$(date +%Y%m%d-%H%M%S)"
+  export WEBSITES_RECORD_DIR="$RECORD_DIR"
+  echo "Recording artifacts to: $RECORD_DIR" >&2
+fi
+
+# --- Browser setup ---
+source "$PROJECT_DIR/lib/browser.sh"
+setup_browser "${usage_keep:-false}"
+
+# --- Run ---
+OUTPUT=$(shimmer browser:run "${BROWSER_ARGS[@]}" "$PROJECT_DIR/scripts/nytimes/headlines.mjs" 2>&1) || {
+  echo "$OUTPUT" >&2
+  exit 1
+}
+
+JSON=$(echo "$OUTPUT" | grep '^\[')
+
+if [ -z "$JSON" ]; then
+  echo "$OUTPUT" >&2
+  echo "No headlines extracted." >&2
+  exit 1
+fi
+
+if [ "${usage_json:-false}" = "true" ]; then
+  echo "$JSON" | jq .
+else
+  echo ""
+  echo "$JSON" | jq -r '.[] | .title' | head -20 | while IFS= read -r headline; do
+    echo "  - $headline"
+  done
+  echo ""
+fi

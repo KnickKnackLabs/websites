@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+#MISE description="Assign a user to a GitHub issue (delegates to gh CLI)"
+#USAGE arg "<issue>" help="Issue reference (owner/repo#number)"
+#USAGE arg "<user>" help="GitHub username to assign"
+
+set -euo pipefail
+
+ISSUE="${usage_issue}"
+USER="${usage_user}"
+
+# Parse owner/repo#number
+if [[ "$ISSUE" =~ ^([^#]+)#([0-9]+)$ ]]; then
+  REPO="${BASH_REMATCH[1]}"
+  NUMBER="${BASH_REMATCH[2]}"
+else
+  echo "ERROR: expected owner/repo#number, got: $ISSUE" >&2
+  exit 1
+fi
+
+gh issue edit "$NUMBER" --repo "$REPO" --add-assignee "$USER"
+echo "Assigned $USER to $ISSUE"

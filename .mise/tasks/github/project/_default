@@ -1,0 +1,59 @@
+#!/usr/bin/env bash
+#MISE description="View a GitHub Project board — extract items and optionally keep the browser open"
+#USAGE arg "<owner>" help="Organization or user that owns the project"
+#USAGE arg "<project>" help="Project number"
+#USAGE flag "--view <view>" help="View name to navigate to"
+#USAGE flag "--keep" help="Keep the browser open after extracting data"
+#USAGE flag "--json" help="Output raw JSON instead of a table"
+#USAGE flag "--record" help="Record page artifacts for test fixtures"
+
+set -euo pipefail
+
+OWNER="${usage_owner}"
+PROJECT="${usage_project}"
+PROJECT_DIR="${MISE_CONFIG_ROOT:?MISE_CONFIG_ROOT not set}"
+
+# --- Recording setup ---
+if [ "${usage_record:-false}" = "true" ]; then
+  RECORD_DIR="$PROJECT_DIR/test/fixtures/$(date +%Y%m%d-%H%M%S)"
+  export WEBSITES_RECORD_DIR="$RECORD_DIR"
+  echo "Recording artifacts to: $RECORD_DIR" >&2
+fi
+
+# --- Browser setup ---
+source "$PROJECT_DIR/lib/browser.sh"
+setup_browser "${usage_keep:-false}"
+
+# --- Run the Patchright script ---
+SCRIPT_ARGS=("${BROWSER_ARGS[@]}" "$PROJECT_DIR/scripts/github/project-view.mjs" -- "${OWNER}" "${PROJECT}")
+if [ -n "${usage_view:-}" ]; then
+  SCRIPT_ARGS+=("${usage_view}")
+fi
+
+OUTPUT=$(shimmer browser:run "${SCRIPT_ARGS[@]}" 2>&1) || {
+  echo "$OUTPUT" >&2
+  exit 1
+}
+
+# Extract JSON (items are output as one JSON array)
+JSON=$(echo "$OUTPUT" | grep '^\[')
+
+if [ -z "$JSON" ]; then
+  echo "$OUTPUT" >&2
+  echo "No items found or failed to extract project data." >&2
+  exit 1
+fi
+
+if [ "${usage_json:-false}" = "true" ]; then
+  echo "$JSON" | jq .
+else
+  # Pretty table output via gum
+  echo "$JSON" | jq -r '
+    .[] | [
+      "\(.repo)#\(.number)",
+      (.status // "—"),
+      .title,
+      (.assignees | join(", "))
+    ] | @csv
+  ' | gum table --columns "Issue,Status,Title,Assignees" --print --border rounded
+fi

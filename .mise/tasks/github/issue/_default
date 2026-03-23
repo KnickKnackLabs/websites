@@ -1,0 +1,29 @@
+#!/usr/bin/env bash
+#MISE description="Open a GitHub issue in the browser"
+#USAGE arg "<issue>" help="Issue reference (owner/repo#number or full URL)"
+#USAGE flag "--keep" help="Keep the browser open after loading"
+
+set -euo pipefail
+
+ISSUE="${usage_issue}"
+PROJECT_DIR="${MISE_CONFIG_ROOT:?MISE_CONFIG_ROOT not set}"
+
+# Parse owner/repo#number format
+if [[ "$ISSUE" =~ ^https:// ]]; then
+  URL="$ISSUE"
+elif [[ "$ISSUE" =~ ^([^#]+)#([0-9]+)$ ]]; then
+  REPO="${BASH_REMATCH[1]}"
+  NUMBER="${BASH_REMATCH[2]}"
+  URL="https://github.com/${REPO}/issues/${NUMBER}"
+else
+  echo "ERROR: expected owner/repo#number or URL, got: $ISSUE" >&2
+  exit 1
+fi
+
+# --- Browser setup ---
+source "$PROJECT_DIR/lib/browser.sh"
+setup_browser "${usage_keep:-false}"
+
+shimmer browser:goto "${BROWSER_ARGS[@]}" "$URL"
+
+echo "Opened: $URL" >&2
