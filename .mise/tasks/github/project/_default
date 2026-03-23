@@ -23,8 +23,11 @@ fi
 # --- Browser setup ---
 BROWSER_ARGS=()
 if [ "${usage_keep:-false}" = "true" ]; then
-  # Launch a persistent headed browser, pass its ID to the script
-  BROWSER_ID=$(shimmer browser:launch --headed 2>/dev/null | grep -o 'browser-[a-z0-9-]*' || true)
+  # Reuse existing browser if one is running, otherwise launch a new one
+  BROWSER_ID=$(shimmer browser:list 2>/dev/null | awk '/^b-.*running/ {print $1; exit}')
+  if [ -z "$BROWSER_ID" ]; then
+    BROWSER_ID=$(shimmer browser:launch --headed 2>/dev/null | head -1)
+  fi
   if [ -n "$BROWSER_ID" ]; then
     BROWSER_ARGS+=(--browser "$BROWSER_ID")
     echo "Browser: $BROWSER_ID (will stay open)" >&2
@@ -57,8 +60,13 @@ fi
 if [ "${usage_json:-false}" = "true" ]; then
   echo "$JSON" | jq .
 else
-  ITEM_COUNT=$(echo "$JSON" | jq 'length')
-  echo "Project: ${OWNER}/${PROJECT} ($ITEM_COUNT items)"
-  echo ""
-  echo "$JSON" | jq -r '.[] | "  \(.repo)#\(.number)  \(.status // "—")  \(.title)  [\(.assignees | join(", "))]"'
+  # Pretty table output via gum
+  echo "$JSON" | jq -r '
+    .[] | [
+      "\(.repo)#\(.number)",
+      (.status // "—"),
+      .title,
+      (.assignees | join(", "))
+    ] | @csv
+  ' | gum table --columns "Issue,Status,Title,Assignees" --print --border rounded
 fi

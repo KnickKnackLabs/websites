@@ -1,2 +1,4 @@
 [tools]
 usage = "latest"
+jq = "latest"
+gum = "latest"
