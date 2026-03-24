@@ -14,8 +14,12 @@ if [ "${usage_record:-false}" = "true" ]; then
   echo "Recording artifacts to: $RECORD_DIR" >&2
 fi
 
+# --- Browser setup ---
+source "$PROJECT_DIR/lib/browser.sh"
+setup_browser false "gusto.com"
+
 # --- Run the Patchright script ---
-OUTPUT=$(browser run -s gusto.com "$PROJECT_DIR/scripts/gusto/home.mjs" 2>&1 | grep '^{') || true
+OUTPUT=$(browser run "${BROWSER_ARGS[@]}" "$PROJECT_DIR/scripts/gusto/home.mjs" 2>&1 | grep '^{') || true
 
 if [ -z "$OUTPUT" ]; then
   echo "Failed to fetch Gusto dashboard." >&2

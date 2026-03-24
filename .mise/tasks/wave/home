@@ -12,7 +12,11 @@ if [ "${usage_record:-false}" = "true" ]; then
   echo "Recording artifacts to: $WEBSITES_RECORD_DIR" >&2
 fi
 
-OUTPUT=$(browser run -s waveapps.com "$PROJECT_DIR/scripts/wave/home.mjs" 2>&1 | grep '^{') || true
+# --- Browser setup ---
+source "$PROJECT_DIR/lib/browser.sh"
+setup_browser false "waveapps.com"
+
+OUTPUT=$(browser run "${BROWSER_ARGS[@]}" "$PROJECT_DIR/scripts/wave/home.mjs" 2>&1 | grep '^{') || true
 
 if [ -z "$OUTPUT" ]; then
   echo "Failed to fetch Wave dashboard." >&2

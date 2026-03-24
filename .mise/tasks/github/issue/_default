@@ -22,7 +22,7 @@ fi
 
 # --- Browser setup ---
 source "$PROJECT_DIR/lib/browser.sh"
-setup_browser "${usage_keep:-false}"
+setup_browser "${usage_keep:-false}" "github.com"
 
 browser goto "${BROWSER_ARGS[@]}" "$URL"
 

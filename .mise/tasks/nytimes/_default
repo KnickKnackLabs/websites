@@ -17,7 +17,7 @@ fi
 
 # --- Browser setup ---
 source "$PROJECT_DIR/lib/browser.sh"
-setup_browser "${usage_keep:-false}"
+setup_browser "${usage_keep:-false}" "nytimes.com"
 
 # --- Run ---
 OUTPUT=$(browser run "${BROWSER_ARGS[@]}" "$PROJECT_DIR/scripts/nytimes/headlines.mjs" 2>&1) || {

@@ -21,6 +21,11 @@ BROWSER_ARGS=()
 # Reports browser ID on stderr so the caller knows which browser to use later.
 setup_browser() {
   local keep="${1:-false}"
+  local site="${2:-}"
+
+  if [ -n "$site" ]; then
+    BROWSER_ARGS+=(--site "$site")
+  fi
 
   if [ "$keep" = "true" ]; then
     local browser_id

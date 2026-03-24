@@ -12,7 +12,11 @@ if [ "${usage_record:-false}" = "true" ]; then
   echo "Recording artifacts to: $WEBSITES_RECORD_DIR" >&2
 fi
 
-OUTPUT=$(browser run -s mercury.com "$PROJECT_DIR/scripts/mercury/transactions.mjs" 2>&1 | grep '^\[') || true
+# --- Browser setup ---
+source "$PROJECT_DIR/lib/browser.sh"
+setup_browser false "mercury.com"
+
+OUTPUT=$(browser run "${BROWSER_ARGS[@]}" "$PROJECT_DIR/scripts/mercury/transactions.mjs" 2>&1 | grep '^\[') || true
 
 if [ -z "$OUTPUT" ]; then
   echo "Failed to fetch Mercury transactions." >&2
