@@ -18,7 +18,7 @@ if [ "${usage_record:-false}" = "true" ]; then
 fi
 
 # --- Launch headed browser, run login script, save auth ---
-BROWSER_ID=$(shimmer browser:launch --headed)
+BROWSER_ID=$(browser launch --headed)
 echo "Browser: $BROWSER_ID" >&2
 
 SCRIPT_ARGS=()
@@ -26,17 +26,17 @@ if [ -n "$USERNAME" ] && [ -n "$PASSWORD" ]; then
   SCRIPT_ARGS+=(-- --username "$USERNAME" --password "$PASSWORD")
 fi
 
-shimmer browser:run -b "$BROWSER_ID" -s gusto.com \
+browser run -b "$BROWSER_ID" -s gusto.com \
   "$PROJECT_DIR/scripts/gusto/login.mjs" \
   "${SCRIPT_ARGS[@]}" || {
     echo "Login failed." >&2
-    shimmer browser:close "$BROWSER_ID" 2>/dev/null || true
+    browser close "$BROWSER_ID" 2>/dev/null || true
     exit 1
   }
 
 # Save auth state from the authenticated browser
-shimmer browser:save-auth gusto.com -b "$BROWSER_ID"
+browser save-auth gusto.com -b "$BROWSER_ID"
 
 # Clean up
-shimmer browser:close "$BROWSER_ID"
+browser close "$BROWSER_ID"
 echo "Gusto auth saved."

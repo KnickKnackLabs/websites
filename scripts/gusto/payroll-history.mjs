@@ -3,7 +3,7 @@
 // Navigates to Pay > Pay History and extracts the payroll table data.
 // Returns structured JSON with each payroll run's details.
 //
-// Usage: shimmer browser:run ./scripts/gusto/payroll-history.mjs
+// Usage: browser run ./scripts/gusto/payroll-history.mjs
 
 import { record } from '../record.mjs';
 import { normalizeText } from '../utils.mjs';

@@ -12,7 +12,7 @@ if [ "${usage_record:-false}" = "true" ]; then
   echo "Recording artifacts to: $WEBSITES_RECORD_DIR" >&2
 fi
 
-OUTPUT=$(shimmer browser:run -s mercury.com "$PROJECT_DIR/scripts/mercury/home.mjs" 2>&1 | grep '^{') || true
+OUTPUT=$(browser run -s mercury.com "$PROJECT_DIR/scripts/mercury/home.mjs" 2>&1 | grep '^{') || true
 
 if [ -z "$OUTPUT" ]; then
   echo "Failed to fetch Mercury dashboard." >&2

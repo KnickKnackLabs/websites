@@ -5,8 +5,8 @@
 // (no credentials), opens the login page and waits for the human.
 //
 // Usage:
-//   shimmer browser:run --headed ./scripts/gusto/login.mjs
-//   shimmer browser:run --headed ./scripts/gusto/login.mjs -- --username user@example.com --password secret
+//   browser run --headed ./scripts/gusto/login.mjs
+//   browser run --headed ./scripts/gusto/login.mjs -- --username user@example.com --password secret
 
 import { record } from '../record.mjs';
 

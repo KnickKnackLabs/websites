@@ -20,7 +20,7 @@ source "$PROJECT_DIR/lib/browser.sh"
 setup_browser "${usage_keep:-false}"
 
 # --- Run ---
-OUTPUT=$(shimmer browser:run "${BROWSER_ARGS[@]}" "$PROJECT_DIR/scripts/nytimes/headlines.mjs" 2>&1) || {
+OUTPUT=$(browser run "${BROWSER_ARGS[@]}" "$PROJECT_DIR/scripts/nytimes/headlines.mjs" 2>&1) || {
   echo "$OUTPUT" >&2
   exit 1
 }

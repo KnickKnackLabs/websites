@@ -12,7 +12,7 @@ if [ "${usage_record:-false}" = "true" ]; then
   echo "Recording artifacts to: $WEBSITES_RECORD_DIR" >&2
 fi
 
-OUTPUT=$(shimmer browser:run -s waveapps.com "$PROJECT_DIR/scripts/wave/transactions.mjs" 2>&1 | grep '^\[') || true
+OUTPUT=$(browser run -s waveapps.com "$PROJECT_DIR/scripts/wave/transactions.mjs" 2>&1 | grep '^\[') || true
 
 if [ -z "$OUTPUT" ]; then
   echo "Failed to fetch Wave transactions." >&2

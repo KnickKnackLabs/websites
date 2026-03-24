@@ -2,7 +2,7 @@
 //
 // Navigates to the Wave dashboard and extracts summary information.
 //
-// Usage: shimmer browser:run -s waveapps.com ./scripts/wave/home.mjs
+// Usage: browser run -s waveapps.com ./scripts/wave/home.mjs
 
 import { record } from '../record.mjs';
 import { parseBusinessId } from './utils.mjs';

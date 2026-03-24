@@ -3,7 +3,7 @@
 // Navigates to the Gusto home page and extracts structured data about
 // pending tasks, payment status, and upcoming deadlines.
 //
-// Usage: shimmer browser:run ./scripts/gusto/home.mjs
+// Usage: browser run ./scripts/gusto/home.mjs
 
 import { record } from '../record.mjs';
 

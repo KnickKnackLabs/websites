@@ -4,7 +4,7 @@
 // Logs in, navigates to the classic tokens page, regenerates the agent's token,
 // and outputs TOKEN:<value> on the last line for the calling task to capture.
 //
-// Usage: shimmer browser:run --headed ./scripts/github/token-rotate.mjs -- <agent-name>
+// Usage: browser run --headed ./scripts/github/token-rotate.mjs -- <agent-name>
 
 import { login } from './login.mjs';
 import { record } from '../record.mjs';

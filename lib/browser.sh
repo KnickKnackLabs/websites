@@ -5,7 +5,7 @@
 # Usage:
 #   source "$MISE_CONFIG_ROOT/lib/browser.sh"
 #   setup_browser "${usage_keep:-false}"
-#   shimmer browser:run "${BROWSER_ARGS[@]}" "$script" ...
+#   browser run "${BROWSER_ARGS[@]}" "$script" ...
 
 BROWSER_ARGS=()
 
@@ -18,9 +18,9 @@ setup_browser() {
   if [ "$keep" = "true" ]; then
     local browser_id
     # Reuse existing browser if one is running
-    browser_id=$(shimmer browser:list 2>/dev/null | awk '/^b-.*running/ {print $1; exit}')
+    browser_id=$(browser list 2>/dev/null | awk '/^b-.*running/ {print $1; exit}')
     if [ -z "$browser_id" ]; then
-      browser_id=$(shimmer browser:launch --headed 2>/dev/null | head -1)
+      browser_id=$(browser launch --headed 2>/dev/null | head -1)
     fi
     if [ -n "$browser_id" ]; then
       BROWSER_ARGS+=(--browser "$browser_id")

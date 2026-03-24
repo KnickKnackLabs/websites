@@ -3,7 +3,7 @@
 // Navigates to the Transactions page and extracts the transaction table.
 // Returns structured JSON with each transaction's details.
 //
-// Usage: shimmer browser:run -s waveapps.com ./scripts/wave/transactions.mjs
+// Usage: browser run -s waveapps.com ./scripts/wave/transactions.mjs
 
 import { record } from '../record.mjs';
 import { normalizeText } from '../utils.mjs';
