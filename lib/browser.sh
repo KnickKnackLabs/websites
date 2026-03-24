@@ -1,11 +1,18 @@
 # browser.sh — Shared browser setup for websites tasks
 #
+# Requires: KnickKnackLabs/browser (install via `shiv install browser`)
+#
 # Source this file and call setup_browser to get BROWSER_ARGS populated.
 #
 # Usage:
 #   source "$MISE_CONFIG_ROOT/lib/browser.sh"
 #   setup_browser "${usage_keep:-false}"
 #   browser run "${BROWSER_ARGS[@]}" "$script" ...
+
+if ! command -v browser &>/dev/null; then
+  echo "ERROR: 'browser' not found. Install it with: shiv install browser" >&2
+  exit 1
+fi
 
 BROWSER_ARGS=()
 
