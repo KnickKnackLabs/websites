@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 #MISE description="View payroll history"
+#USAGE flag "--keep" help="Keep the browser open after extracting data"
+#USAGE flag "--site <site>" help="Auth session to load" default="gusto.com"
 #USAGE flag "--json" help="Output raw JSON"
 #USAGE flag "--record" help="Record page artifacts for test fixtures"
 
@@ -14,8 +16,12 @@ if [ "${usage_record:-false}" = "true" ]; then
   echo "Recording artifacts to: $RECORD_DIR" >&2
 fi
 
+# --- Browser setup ---
+source "$PROJECT_DIR/lib/browser.sh"
+setup_browser "${usage_keep:-false}" "${usage_site:-gusto.com}"
+
 # --- Run the Patchright script ---
-OUTPUT=$(browser run -s gusto.com "$PROJECT_DIR/scripts/gusto/payroll-history.mjs" 2>&1 | grep '^\[') || true
+OUTPUT=$(browser run "${BROWSER_ARGS[@]}" "$PROJECT_DIR/scripts/gusto/payroll-history.mjs" 2>&1 | grep '^\[') || true
 
 if [ -z "$OUTPUT" ]; then
   echo "Failed to fetch payroll history." >&2

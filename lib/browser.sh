@@ -6,7 +6,7 @@
 #
 # Usage:
 #   source "$MISE_CONFIG_ROOT/lib/browser.sh"
-#   setup_browser "${usage_keep:-false}"
+#   setup_browser "${usage_keep:-false}" "github.com"
 #   browser run "${BROWSER_ARGS[@]}" "$script" ...
 
 if ! command -v browser &>/dev/null; then
@@ -16,11 +16,16 @@ fi
 
 BROWSER_ARGS=()
 
-# Populate BROWSER_ARGS based on --keep flag.
+# Populate BROWSER_ARGS based on --keep and --site flags.
 # If keep is true: reuse a running browser or launch a new headed one.
 # Reports browser ID on stderr so the caller knows which browser to use later.
 setup_browser() {
   local keep="${1:-false}"
+  local site="${2:-}"
+
+  if [ -n "$site" ]; then
+    BROWSER_ARGS+=(--site "$site")
+  fi
 
   if [ "$keep" = "true" ]; then
     local browser_id
