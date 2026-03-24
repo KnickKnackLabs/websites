@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 #MISE description="View Wave transactions"
+#USAGE flag "--keep" help="Keep the browser open after extracting data"
+#USAGE flag "--site <site>" help="Auth session to load" default="waveapps.com"
 #USAGE flag "--json" help="Output raw JSON"
 #USAGE flag "--record" help="Record page artifacts for test fixtures"
 
@@ -14,7 +16,7 @@ fi
 
 # --- Browser setup ---
 source "$PROJECT_DIR/lib/browser.sh"
-setup_browser false "waveapps.com"
+setup_browser "${usage_keep:-false}" "${usage_site:-waveapps.com}"
 
 OUTPUT=$(browser run "${BROWSER_ARGS[@]}" "$PROJECT_DIR/scripts/wave/transactions.mjs" 2>&1 | grep '^\[') || true
 

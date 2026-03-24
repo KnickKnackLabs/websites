@@ -2,6 +2,7 @@
 #MISE description="Open a GitHub issue in the browser"
 #USAGE arg "<issue>" help="Issue reference (owner/repo#number or full URL)"
 #USAGE flag "--keep" help="Keep the browser open after loading"
+#USAGE flag "--site <site>" help="Auth session to load" default="github.com"
 
 set -euo pipefail
 
@@ -22,7 +23,7 @@ fi
 
 # --- Browser setup ---
 source "$PROJECT_DIR/lib/browser.sh"
-setup_browser "${usage_keep:-false}" "github.com"
+setup_browser "${usage_keep:-false}" "${usage_site:-github.com}"
 
 browser goto "${BROWSER_ARGS[@]}" "$URL"
 

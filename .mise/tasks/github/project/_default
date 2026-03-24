@@ -4,6 +4,7 @@
 #USAGE arg "<project>" help="Project number"
 #USAGE flag "--view <view>" help="View name to navigate to"
 #USAGE flag "--keep" help="Keep the browser open after extracting data"
+#USAGE flag "--site <site>" help="Auth session to load" default="github.com"
 #USAGE flag "--json" help="Output raw JSON instead of a table"
 #USAGE flag "--record" help="Record page artifacts for test fixtures"
 
@@ -22,7 +23,7 @@ fi
 
 # --- Browser setup ---
 source "$PROJECT_DIR/lib/browser.sh"
-setup_browser "${usage_keep:-false}" "github.com"
+setup_browser "${usage_keep:-false}" "${usage_site:-github.com}"
 
 # --- Run the Patchright script ---
 SCRIPT_ARGS=("${BROWSER_ARGS[@]}" "$PROJECT_DIR/scripts/github/project-view.mjs" -- "${OWNER}" "${PROJECT}")
