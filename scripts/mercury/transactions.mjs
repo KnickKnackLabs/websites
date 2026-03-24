@@ -2,7 +2,7 @@
 //
 // Navigates to the Transactions page and extracts the table data.
 //
-// Usage: shimmer browser:run -s mercury.com ./scripts/mercury/transactions.mjs
+// Usage: browser run -s mercury.com ./scripts/mercury/transactions.mjs
 
 import { record } from '../record.mjs';
 

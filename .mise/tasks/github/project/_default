@@ -30,7 +30,7 @@ if [ -n "${usage_view:-}" ]; then
   SCRIPT_ARGS+=("${usage_view}")
 fi
 
-OUTPUT=$(shimmer browser:run "${SCRIPT_ARGS[@]}" 2>&1) || {
+OUTPUT=$(browser run "${SCRIPT_ARGS[@]}" 2>&1) || {
   echo "$OUTPUT" >&2
   exit 1
 }

@@ -206,3 +206,37 @@ run_js() {
   "
   [ "$output" = "null" ]
 }
+
+# --- parseProjectArgs (project-view.mjs) ---
+
+@test "parseProjectArgs: extracts owner, project number, and optional view" {
+  run_js "
+    import { parseProjectArgs } from '$SCRIPTS_DIR/project-view.mjs';
+    console.log(JSON.stringify(parseProjectArgs(['ricon-family', '8', 'Current Sprint'])));
+  "
+  [ "$output" = '{"owner":"ricon-family","projectNumber":"8","viewName":"Current Sprint"}' ]
+}
+
+@test "parseProjectArgs: works without optional view name" {
+  run_js "
+    import { parseProjectArgs } from '$SCRIPTS_DIR/project-view.mjs';
+    console.log(JSON.stringify(parseProjectArgs(['ricon-family', '8'])));
+  "
+  [ "$output" = '{"owner":"ricon-family","projectNumber":"8"}' ]
+}
+
+@test "parseProjectArgs: returns null when missing required args" {
+  run_js "
+    import { parseProjectArgs } from '$SCRIPTS_DIR/project-view.mjs';
+    console.log(parseProjectArgs(['ricon-family']));
+  "
+  [ "$output" = "null" ]
+}
+
+@test "parseProjectArgs: returns null for empty args" {
+  run_js "
+    import { parseProjectArgs } from '$SCRIPTS_DIR/project-view.mjs';
+    console.log(parseProjectArgs([]));
+  "
+  [ "$output" = "null" ]
+}

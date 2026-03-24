@@ -1,11 +1,18 @@
 # browser.sh — Shared browser setup for websites tasks
 #
+# Requires: KnickKnackLabs/browser (install via `shiv install browser`)
+#
 # Source this file and call setup_browser to get BROWSER_ARGS populated.
 #
 # Usage:
 #   source "$MISE_CONFIG_ROOT/lib/browser.sh"
 #   setup_browser "${usage_keep:-false}"
-#   shimmer browser:run "${BROWSER_ARGS[@]}" "$script" ...
+#   browser run "${BROWSER_ARGS[@]}" "$script" ...
+
+if ! command -v browser &>/dev/null; then
+  echo "ERROR: 'browser' not found. Install it with: shiv install browser" >&2
+  exit 1
+fi
 
 BROWSER_ARGS=()
 
@@ -18,9 +25,9 @@ setup_browser() {
   if [ "$keep" = "true" ]; then
     local browser_id
     # Reuse existing browser if one is running
-    browser_id=$(shimmer browser:list 2>/dev/null | awk '/^b-.*running/ {print $1; exit}')
+    browser_id=$(browser list 2>/dev/null | awk '/^b-.*running/ {print $1; exit}')
     if [ -z "$browser_id" ]; then
-      browser_id=$(shimmer browser:launch --headed 2>/dev/null | head -1)
+      browser_id=$(browser launch --headed 2>/dev/null | head -1)
     fi
     if [ -n "$browser_id" ]; then
       BROWSER_ARGS+=(--browser "$browser_id")

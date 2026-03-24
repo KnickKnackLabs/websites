@@ -15,7 +15,7 @@ if [ "${usage_record:-false}" = "true" ]; then
 fi
 
 # --- Run the Patchright script ---
-OUTPUT=$(shimmer browser:run -s gusto.com "$PROJECT_DIR/scripts/gusto/payroll-history.mjs" 2>&1 | grep '^\[') || true
+OUTPUT=$(browser run -s gusto.com "$PROJECT_DIR/scripts/gusto/payroll-history.mjs" 2>&1 | grep '^\[') || true
 
 if [ -z "$OUTPUT" ]; then
   echo "Failed to fetch payroll history." >&2

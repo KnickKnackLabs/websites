@@ -1,6 +1,6 @@
 // headlines.mjs — Extract headlines from the NYTimes front page
 //
-// Usage: shimmer browser:run ./scripts/nytimes/headlines.mjs
+// Usage: browser run ./scripts/nytimes/headlines.mjs
 
 import { record } from '../record.mjs';
 

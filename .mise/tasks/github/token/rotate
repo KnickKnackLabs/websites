@@ -23,7 +23,7 @@ fi
 
 # --- Run the Patchright script ---
 OUTPUT=$(
-  shimmer browser:run "$PROJECT_DIR/scripts/github/token-rotate.mjs" -- "$TOKEN_NAME" \
+  browser run "$PROJECT_DIR/scripts/github/token-rotate.mjs" -- "$TOKEN_NAME" \
   2>&1
 ) || {
   echo "$OUTPUT" >&2

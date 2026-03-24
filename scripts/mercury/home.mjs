@@ -1,6 +1,6 @@
 // home.mjs — Extract Mercury dashboard data (balances, accounts)
 //
-// Usage: shimmer browser:run -s mercury.com ./scripts/mercury/home.mjs
+// Usage: browser run -s mercury.com ./scripts/mercury/home.mjs
 
 import { record } from '../record.mjs';
 

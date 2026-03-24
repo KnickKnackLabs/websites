@@ -24,6 +24,6 @@ fi
 source "$PROJECT_DIR/lib/browser.sh"
 setup_browser "${usage_keep:-false}"
 
-shimmer browser:goto "${BROWSER_ARGS[@]}" "$URL"
+browser goto "${BROWSER_ARGS[@]}" "$URL"
 
 echo "Opened: $URL" >&2

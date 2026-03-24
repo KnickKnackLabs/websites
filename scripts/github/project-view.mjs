@@ -3,7 +3,7 @@
 // Navigates to a GitHub Projects v2 board, extracts all visible items
 // with their field values, and outputs them as a JSON array.
 //
-// Usage: shimmer browser:run -s github.com ./scripts/github/project-view.mjs -- <owner> <project-number> [view-name]
+// Usage: browser run -s github.com ./scripts/github/project-view.mjs -- <owner> <project-number> [view-name]
 
 import { login } from './login.mjs';
 import { record } from '../record.mjs';
@@ -18,19 +18,26 @@ export function parseIssueRef(urlPath) {
   return { repo: match[1], number: parseInt(match[2], 10) };
 }
 
+// Parse script arguments into project parameters.
+// Args come directly from the harness positionals (no prefix to skip).
+export function parseProjectArgs(args) {
+  const owner = args[0];
+  const projectNumber = args[1];
+  if (!owner || !projectNumber) return null;
+  const result = { owner, projectNumber };
+  if (args[2]) result.viewName = args[2];
+  return result;
+}
+
 // --- Script entry point ---
 
 export default async function({ page, args }) {
-  // shimmer browser:run prepends the subcommand name ("run") as args[0]
-  const scriptArgs = args.slice(1);
-  const owner = scriptArgs[0];
-  const projectNumber = scriptArgs[1];
-  const viewName = scriptArgs[2]; // optional
-
-  if (!owner || !projectNumber) {
+  const parsed = parseProjectArgs(args);
+  if (!parsed) {
     console.error('Usage: project-view.mjs <owner> <project-number> [view-name]');
     process.exit(1);
   }
+  const { owner, projectNumber, viewName } = parsed;
 
   // --- Navigate to project ---
   const projectUrl = `https://github.com/orgs/${owner}/projects/${projectNumber}`;
