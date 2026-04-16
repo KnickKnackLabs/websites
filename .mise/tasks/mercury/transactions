@@ -18,9 +18,15 @@ fi
 source "$PROJECT_DIR/lib/browser.sh"
 setup_browser "${usage_keep:-false}" "${usage_site:-mercury.com}"
 
-OUTPUT=$(browser run "${BROWSER_ARGS[@]}" "$PROJECT_DIR/scripts/mercury/transactions.mjs" 2>&1 | grep '^\[') || true
+RAW_OUTPUT=$(browser run "${BROWSER_ARGS[@]}" "$PROJECT_DIR/scripts/mercury/transactions.mjs" 2>&1) || {
+  echo "$RAW_OUTPUT" >&2
+  exit 1
+}
+
+OUTPUT=$(echo "$RAW_OUTPUT" | grep '^\[') || true
 
 if [ -z "$OUTPUT" ]; then
+  echo "$RAW_OUTPUT" >&2
   echo "Failed to fetch Mercury transactions." >&2
   exit 1
 fi

@@ -3,6 +3,7 @@
 // Usage: browser run -s mercury.com ./scripts/mercury/home.mjs
 
 import { record } from '../record.mjs';
+import { isMercuryAuthPage } from './auth.mjs';
 
 export const site = 'mercury.com';
 
@@ -24,7 +25,15 @@ export default async function({ page }) {
   // Dismiss any popups
   await page.keyboard.press('Escape');
 
-  record('mercury-home.html', await page.content());
+  const html = await page.content();
+  record('mercury-home.html', html);
+
+  const currentUrl = page.url();
+  const pageText = await page.locator('body').innerText().catch(() => '');
+  const title = await page.title().catch(() => '');
+  if (isMercuryAuthPage(currentUrl, `${title}\n${pageText}\n${html}`)) {
+    throw new Error('Mercury auth missing or expired. Run: mise run mercury:activate');
+  }
 
   const data = await page.evaluate(() => {
     // Greeting

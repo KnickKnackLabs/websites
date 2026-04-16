@@ -5,6 +5,7 @@
 // Usage: browser run -s mercury.com ./scripts/mercury/transactions.mjs
 
 import { record } from '../record.mjs';
+import { isMercuryAuthPage } from './auth.mjs';
 
 export const site = 'mercury.com';
 
@@ -12,11 +13,32 @@ export const site = 'mercury.com';
 
 export default async function({ page }) {
   await page.goto('https://app.mercury.com/transactions', { waitUntil: 'domcontentloaded' });
+  await page.waitForTimeout(1500);
+
+  const currentUrl = page.url();
+  const pageText = await page.locator('body').innerText().catch(() => '');
+  const title = await page.title().catch(() => '');
+  const html = await page.content();
+  if (isMercuryAuthPage(currentUrl, `${title}\n${pageText}\n${html}`)) {
+    record('mercury-transactions-auth.html', html);
+    throw new Error('Mercury auth missing or expired. Run: mise run mercury:activate');
+  }
 
   // Wait for transaction rows to load
   // Mercury uses CSS module classes with `date` in the class name
   await page.locator('table tbody tr').first()
-    .waitFor({ state: 'visible', timeout: 30000 });
+    .waitFor({ state: 'visible', timeout: 30000 })
+    .catch(async (err) => {
+      const retryUrl = page.url();
+      const retryTitle = await page.title().catch(() => '');
+      const retryText = await page.locator('body').innerText().catch(() => '');
+      const retryHtml = await page.content();
+      if (isMercuryAuthPage(retryUrl, `${retryTitle}\n${retryText}\n${retryHtml}`)) {
+        record('mercury-transactions-auth.html', retryHtml);
+        throw new Error('Mercury auth missing or expired. Run: mise run mercury:activate');
+      }
+      throw err;
+    });
 
   // Dismiss any popups
   await page.keyboard.press('Escape');
