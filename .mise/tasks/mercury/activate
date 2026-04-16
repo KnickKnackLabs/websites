@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
-#MISE description="Activate Mercury access from an invite email or URL"
-#USAGE flag "--email-id <id>" help="Email ID containing the Mercury invite"
-#USAGE flag "--invite-url <url>" help="Explicit Mercury invite URL"
+#MISE description="Activate Mercury access from an invite URL"
+#USAGE flag "--invite-url <url>" help="Mercury invite URL"
 #USAGE flag "--password <password>" help="Optional password to prefill in Mercury"
 #USAGE flag "--keep" help="Keep the browser open after saving auth"
 #USAGE flag "--record" help="Record page artifacts for test fixtures"
@@ -9,7 +8,6 @@
 set -euo pipefail
 
 PROJECT_DIR="${MISE_CONFIG_ROOT:?MISE_CONFIG_ROOT not set}"
-EMAIL_ID="${usage_email_id:-}"
 INVITE_URL="${usage_invite_url:-}"
 PASSWORD="${usage_password:-}"
 KEEP="${usage_keep:-false}"
@@ -19,20 +17,9 @@ if [ "${usage_record:-false}" = "true" ]; then
   echo "Recording artifacts to: $WEBSITES_RECORD_DIR" >&2
 fi
 
-if [ -z "$INVITE_URL" ] && [ -n "$EMAIL_ID" ]; then
-  EMAIL_TEXT=$(emails read "$EMAIL_ID")
-  INVITE_URL=$(cd "$PROJECT_DIR" && EMAIL_TEXT="$EMAIL_TEXT" node --input-type=module <<'EOF'
-import { extractInviteUrl } from './scripts/mercury/auth.mjs';
-const text = process.env.EMAIL_TEXT || '';
-const url = extractInviteUrl(text);
-if (url) console.log(url);
-EOF
-)
-fi
-
 if [ -z "$INVITE_URL" ]; then
-  echo "Mercury invite URL not found." >&2
-  echo "Pass --invite-url explicitly or use --email-id with a Mercury invite email." >&2
+  echo "Mercury invite URL required." >&2
+  echo "Pass --invite-url with the activation link from Mercury." >&2
   exit 1
 fi
 
