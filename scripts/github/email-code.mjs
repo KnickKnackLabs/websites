@@ -14,7 +14,7 @@ export function isVerificationEmail(line) {
   return keywords.some(kw => line.includes(kw));
 }
 
-// Extract an email ID from a shimmer email:list table line.
+// Extract an email ID from an emails list table line.
 // Format: | <id> | <flags> | <subject> | ...
 export function parseEmailId(line) {
   const match = line.match(/\|\s*(\d+)\s*\|/);
@@ -41,13 +41,13 @@ export function parseVerificationCode(emailText) {
 const defaultFetcher = {
   listEmails(agent, count = 5) {
     return execSync(
-      `GIT_AUTHOR_EMAIL="${agent}@ricon.family" shimmer email:list -n ${count}`,
+      `GIT_AUTHOR_EMAIL="${agent}@ricon.family" emails list -n ${count}`,
       { encoding: 'utf-8', timeout: 15000 }
     );
   },
   readEmail(agent, emailId) {
     return execSync(
-      `GIT_AUTHOR_EMAIL="${agent}@ricon.family" shimmer email:read ${emailId}`,
+      `GIT_AUTHOR_EMAIL="${agent}@ricon.family" emails read ${emailId}`,
       { encoding: 'utf-8', timeout: 15000 }
     );
   },
