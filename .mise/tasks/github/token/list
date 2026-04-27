@@ -1,0 +1,55 @@
+#!/usr/bin/env bash
+#MISE description="List visible GitHub classic PAT names"
+#USAGE flag "--login-id <id>" help="Identity used for email verification polling"
+#USAGE flag "--json" help="Output raw JSON instead of a table"
+#USAGE flag "--record" help="Record page artifacts for test fixtures"
+
+set -euo pipefail
+
+PROJECT_DIR="${MISE_CONFIG_ROOT:?MISE_CONFIG_ROOT not set}"
+LOGIN_ID="${usage_login_id:-${GIT_AUTHOR_NAME:-github}}"
+
+if [ -z "${GITHUB_USERNAME:-}" ] || [ -z "${GITHUB_PASSWORD:-}" ]; then
+  echo "ERROR: GITHUB_USERNAME and GITHUB_PASSWORD env vars required." >&2
+  exit 1
+fi
+
+if [ "${usage_record:-false}" = "true" ]; then
+  RECORD_DIR="$PROJECT_DIR/test/fixtures/$(date +%Y%m%d-%H%M%S)"
+  export WEBSITES_RECORD_DIR="$RECORD_DIR"
+  echo "Recording artifacts to: $RECORD_DIR" >&2
+  echo "" >&2
+fi
+
+OUTPUT=$(browser run "$PROJECT_DIR/scripts/github/token-list.mjs" -- "$LOGIN_ID" 2>&1) || {
+  echo "$OUTPUT" >&2
+  exit 1
+}
+
+JSON=$(echo "$OUTPUT" | awk '/^TOKENS_JSON:/ { sub(/^TOKENS_JSON:/, ""); print; found=1 } END { exit found ? 0 : 1 }') || {
+  echo "$OUTPUT" >&2
+  echo "ERROR: Could not extract token list JSON from script output" >&2
+  exit 1
+}
+
+# Keep browser/login diagnostics visible without polluting --json stdout.
+echo "$OUTPUT" | awk '!/^TOKENS_JSON:/' >&2
+
+if [ "${usage_json:-false}" = "true" ]; then
+  echo "$JSON" | jq .
+  exit 0
+fi
+
+if [ "$(echo "$JSON" | jq 'length')" -eq 0 ]; then
+  echo "No classic tokens found."
+  exit 0
+fi
+
+ROWS=$(echo "$JSON" | jq -r '.[] | [.id, .name, ((.status // []) | join(" | "))] | @tsv')
+
+if command -v gum >/dev/null 2>&1; then
+  echo "$ROWS" | gum table --separator $'\t' --columns "ID,Name,Status" --print --border rounded
+else
+  printf 'ID\tName\tStatus\n'
+  echo "$ROWS"
+fi

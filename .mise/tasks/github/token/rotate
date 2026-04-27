@@ -1,11 +1,13 @@
 #!/usr/bin/env bash
 #MISE description="Regenerate a GitHub classic PAT by name"
-#USAGE arg "<token-name>" help="Name of the token to regenerate"
+#USAGE arg "<name>" help="Name of the token to regenerate"
+#USAGE flag "--login-id <id>" help="Identity used for email verification polling"
 #USAGE flag "--record" help="Record page artifacts for test fixtures"
 
-set -e
+set -euo pipefail
 
-TOKEN_NAME="${usage_token_name:?Usage: websites github:token:rotate <token-name>}"
+TOKEN_NAME="${usage_name:?Usage: websites github:token:rotate <name>}"
+LOGIN_ID="${usage_login_id:-${GIT_AUTHOR_NAME:-$TOKEN_NAME}}"
 PROJECT_DIR="${MISE_CONFIG_ROOT:?MISE_CONFIG_ROOT not set}"
 
 if [ -z "${GITHUB_USERNAME:-}" ] || [ -z "${GITHUB_PASSWORD:-}" ]; then
@@ -23,7 +25,7 @@ fi
 
 # --- Run the Patchright script ---
 OUTPUT=$(
-  browser run "$PROJECT_DIR/scripts/github/token-rotate.mjs" -- "$TOKEN_NAME" \
+  browser run "$PROJECT_DIR/scripts/github/token-rotate.mjs" -- "$TOKEN_NAME" "$LOGIN_ID" \
   2>&1
 ) || {
   echo "$OUTPUT" >&2
@@ -32,8 +34,10 @@ OUTPUT=$(
 
 echo "$OUTPUT" >&2
 
-# Extract and output just the token
-NEW_TOKEN=$(echo "$OUTPUT" | grep '^TOKEN:' | tail -1 | sed 's/^TOKEN://')
+# Extract and output just the token.
+# Use awk instead of a grep pipeline so pipefail doesn't bypass the explicit
+# validation/error message below when the browser script exits 0 without TOKEN:.
+NEW_TOKEN=$(echo "$OUTPUT" | awk -F'TOKEN:' '/^TOKEN:/ { value=$2 } END { print value }')
 
 if [ -z "$NEW_TOKEN" ] || ! echo "$NEW_TOKEN" | grep -q '^ghp_'; then
   echo "ERROR: Could not extract token from script output" >&2
