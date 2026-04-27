@@ -1,34 +1,30 @@
 // token-rotate.mjs — Regenerate a classic GitHub PAT
 //
 // Assumes GITHUB_USERNAME and GITHUB_PASSWORD env vars are set.
-// Logs in, navigates to the classic tokens page, regenerates the agent's token,
+// Logs in, navigates to the classic tokens page, regenerates a named token,
 // and outputs TOKEN:<value> on the last line for the calling task to capture.
 //
-// Usage: browser run --headed ./scripts/github/token-rotate.mjs -- <agent-name>
+// Usage: browser run --headed ./scripts/github/token-rotate.mjs -- <token-name> [login-id]
 
 import { login } from './login.mjs';
 import { record } from '../record.mjs';
+import {
+  findClassicTokenByName,
+  listClassicTokens,
+  parseTokenFromText,
+  parseTokenId,
+} from './tokens.mjs';
 
-// --- Pure functions (testable) ---
-
-// Extract a classic PAT (ghp_...) from page text or HTML.
-export function parseTokenFromText(text) {
-  const match = text.match(/(ghp_[a-zA-Z0-9]+)/);
-  return match ? match[1] : null;
-}
-
-// Extract a token ID from a /settings/tokens/<id> href.
-export function parseTokenId(href) {
-  const match = href.match(/\/tokens\/(\d+)/);
-  return match ? match[1] : null;
-}
+// Re-export pure functions for compatibility with existing tests/importers.
+export { parseTokenFromText, parseTokenId };
 
 // --- Script entry point ---
 
 export default async function({ page, args }) {
-  const agent = args[0];
-  if (!agent) {
-    console.error('Usage: pass agent name as first argument');
+  const tokenName = args[0];
+  const loginId = args[1] || process.env.WEBSITES_LOGIN_ID || tokenName;
+  if (!tokenName) {
+    console.error('Usage: pass token name as first argument');
     process.exit(1);
   }
 
@@ -40,41 +36,45 @@ export default async function({ page, args }) {
   }
 
   // --- Login ---
-  await login(page, { agent, username, password });
+  await login(page, { agent: loginId, username, password });
 
   // --- Navigate to classic tokens page ---
   await page.goto('https://github.com/settings/tokens');
   await page.waitForLoadState('domcontentloaded');
-  record(`tokens-page-${agent}.html`, await page.content());
+  record(`tokens-page-${loginId}.html`, await page.content());
 
-  // --- Find the agent's token ---
-  const tokenLink = page.locator(`a[href*="/settings/tokens/"]:has-text("${agent}")`).first();
-  if (!await tokenLink.isVisible({ timeout: 5000 }).catch(() => false)) {
-    console.error(`Token named "${agent}" not found.`);
+  const loginFormStillVisible = await page.locator('input[name="login"], input[name="password"]').first()
+    .isVisible({ timeout: 1000 })
+    .catch(() => false);
+  if (loginFormStillVisible) {
+    console.error(`Not authenticated after login; redirected to ${page.url()}`);
+    process.exit(1);
+  }
 
-    const allTokenLinks = page.locator('a[href*="/settings/tokens/"]');
-    const count = await allTokenLinks.count();
-    console.error(`Found ${count} token(s) on page:`);
-    for (let i = 0; i < count; i++) {
-      const text = await allTokenLinks.nth(i).textContent();
-      console.error(`  - ${text.trim()}`);
+  // --- Find the token by exact visible name ---
+  const tokens = await listClassicTokens(page);
+  const token = findClassicTokenByName(tokens, tokenName);
+  if (!token) {
+    console.error(`Token named "${tokenName}" not found.`);
+    console.error(`Found ${tokens.length} token(s) on page:`);
+    for (const visibleToken of tokens) {
+      console.error(`  - ${visibleToken.id}\t${visibleToken.name}`);
     }
     process.exit(1);
   }
 
-  const tokenHref = await tokenLink.getAttribute('href');
-  const tokenId = parseTokenId(tokenHref);
+  const tokenId = token.id;
   if (!tokenId) {
-    console.error(`Could not extract token ID from href: ${tokenHref}`);
+    console.error(`Could not extract token ID for token: ${tokenName}`);
     process.exit(1);
   }
 
-  console.log(`Found token "${agent}" (ID: ${tokenId}). Regenerating...`);
+  console.log(`Found token "${tokenName}" (ID: ${tokenId}). Regenerating...`);
 
   // --- Regenerate ---
   await page.goto(`https://github.com/settings/tokens/${tokenId}/regenerate`);
   await page.waitForLoadState('domcontentloaded');
-  record(`regenerate-page-${agent}.html`, await page.content());
+  record(`regenerate-page-${loginId}.html`, await page.content());
 
   // Set expiration to 30 days
   const expirationSelect = page.locator('select#token_expiration, select[name*="expiration"]').first();
@@ -100,7 +100,7 @@ export default async function({ page, args }) {
   await tokenDisplayLocator.waitFor({ state: 'visible', timeout: 15000 }).catch(() => {
     console.error('Warning: token display element not found within timeout, will try fallback methods.');
   });
-  record(`regenerated-page-${agent}.html`, await page.content());
+  record(`regenerated-page-${loginId}.html`, await page.content());
 
   // --- Capture the new token ---
   let newToken = null;

@@ -2,3 +2,5 @@
 usage = "latest"
 jq = "latest"
 gum = "latest"
+node = "latest"
+bats = "1.13.0"

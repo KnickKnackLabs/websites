@@ -29,8 +29,15 @@ export async function login(page, { agent, username, password }) {
   const postLoginUrl = page.url();
   record(`login-post-submit-${agent}.html`, await page.content());
 
-  // Check for device verification
-  if (postLoginUrl.includes('/sessions/two-factor') || postLoginUrl.includes('/login/device')) {
+  // Check for device verification. GitHub has used multiple URL shapes for
+  // this flow; the visible OTP input is more reliable than URL matching alone.
+  const otpInput = page.locator('#otp, input[name="otp"], input[autocomplete="one-time-code"]').first();
+  const needsDeviceVerification =
+    postLoginUrl.includes('/sessions/two-factor') ||
+    postLoginUrl.includes('/login/device') ||
+    await otpInput.isVisible({ timeout: 3000 }).catch(() => false);
+
+  if (needsDeviceVerification) {
     console.log('Device verification required. Polling email...');
 
     const code = await pollForVerificationCode(agent);
@@ -40,8 +47,6 @@ export async function login(page, { agent, username, password }) {
 
     console.error('Got verification code.');
 
-    // GitHub device verification: look for the OTP input
-    const otpInput = page.locator('#otp, input[name="otp"], input[autocomplete="one-time-code"]').first();
     if (await otpInput.isVisible({ timeout: 5000 }).catch(() => false)) {
       await otpInput.fill(code);
     } else {
@@ -49,19 +54,30 @@ export async function login(page, { agent, username, password }) {
       await textInput.fill(code);
     }
 
-    // Submit
-    const submitBtn = page.locator('button[type="submit"]:visible').first();
+    // GitHub usually auto-submits the device code, but pressing Enter keeps the
+    // flow moving when auto-submit does not fire in automation.
+    await page.keyboard.press('Enter').catch(() => {});
+
+    const submitBtn = page.locator('button[type="submit"]:visible, input[type="submit"]:visible').first();
     if (await submitBtn.isVisible({ timeout: 2000 }).catch(() => false)) {
       await submitBtn.click();
     }
 
-    // Wait for redirect past verification
+    // Wait for redirect past verification.
     await page.waitForURL(url => {
       const s = url.toString();
       return !s.includes('/login') && !s.includes('/sessions');
     }, { timeout: 30000 });
 
     record(`login-post-verify-${agent}.html`, await page.content());
+  }
+
+  const loginFormStillVisible = await page.locator('input[name="login"], input[name="password"]').first()
+    .isVisible({ timeout: 1000 })
+    .catch(() => false);
+  if (loginFormStillVisible) {
+    record(`login-failed-${agent}.html`, await page.content());
+    throw new Error(`GitHub login did not complete. Current URL: ${page.url()}`);
   }
 
   console.log('Logged in successfully.');

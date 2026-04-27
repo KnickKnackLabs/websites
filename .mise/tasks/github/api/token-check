@@ -13,18 +13,26 @@ fi
 # gh api -i returns headers + JSON body together, so --jq can't be used.
 # Parse the login field from the raw JSON response.
 USER=$(echo "$RESPONSE" | grep -o '"login"\s*:\s*"[^"]*"' | head -1 | cut -d'"' -f4)
-EXPIRY=$(echo "$RESPONSE" | grep -i 'github-authentication-token-expiration:' | sed 's/.*: //' | tr -d '\r')
+EXPIRY=$(echo "$RESPONSE" | awk '
+  tolower($0) ~ /^github-authentication-token-expiration:/ {
+    sub(/^[^:]*:[[:space:]]*/, "")
+    sub(/\r$/, "")
+    print
+    exit
+  }
+')
 
 if [ -z "$EXPIRY" ]; then
   echo "✓ $USER — no expiration"
   exit 0
 fi
 
-# GitHub's header format: "2026-04-16 06:02:20 UTC"
-# macOS uses date -j -f, Linux/GNU uses date -d. Try both.
-EXPIRY_EPOCH=$(date -j -f "%Y-%m-%d %H:%M:%S %Z" "$EXPIRY" "+%s" 2>/dev/null \
-  || date -d "$EXPIRY" "+%s" 2>/dev/null \
-  || echo "")
+# GitHub's header format: "2026-04-16 06:02:20 UTC".
+# Use Node's Date parser instead of branching across BSD/GNU date flags.
+EXPIRY_EPOCH=$(node -e '
+  const parsed = Date.parse(process.argv[1]);
+  if (!Number.isNaN(parsed)) console.log(Math.floor(parsed / 1000));
+' "$EXPIRY")
 if [ -n "$EXPIRY_EPOCH" ]; then
   NOW=$(date "+%s")
   DAYS_LEFT=$(( (EXPIRY_EPOCH - NOW) / 86400 ))

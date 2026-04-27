@@ -155,6 +155,26 @@ run_js() {
   [ "$output" = "ghp_oldtoken123" ]
 }
 
+# --- findClassicTokenByName ---
+
+@test "findClassicTokenByName: requires exact token name match" {
+  run_js "
+    import { findClassicTokenByName } from '$SCRIPTS_DIR/tokens.mjs';
+    const tokens = [{ id: '1', name: 'ikma-old' }, { id: '2', name: 'ikma' }];
+    console.log(JSON.stringify(findClassicTokenByName(tokens, 'ikma')));
+  "
+  [ "$output" = '{"id":"2","name":"ikma"}' ]
+}
+
+@test "findClassicTokenByName: does not substring match" {
+  run_js "
+    import { findClassicTokenByName } from '$SCRIPTS_DIR/tokens.mjs';
+    const tokens = [{ id: '1', name: 'or-personal' }];
+    console.log(findClassicTokenByName(tokens, 'or'));
+  "
+  [ "$output" = "null" ]
+}
+
 # --- parseTokenId ---
 
 @test "parseTokenId: extracts ID from settings URL" {
