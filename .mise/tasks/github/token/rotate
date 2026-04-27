@@ -19,8 +19,8 @@ fi
 if [ "${usage_record:-false}" = "true" ]; then
   RECORD_DIR="$PROJECT_DIR/test/fixtures/$(date +%Y%m%d-%H%M%S)"
   export WEBSITES_RECORD_DIR="$RECORD_DIR"
-  echo "Recording artifacts to: $RECORD_DIR"
-  echo ""
+  echo "Recording artifacts to: $RECORD_DIR" >&2
+  echo "" >&2
 fi
 
 # --- Run the Patchright script ---

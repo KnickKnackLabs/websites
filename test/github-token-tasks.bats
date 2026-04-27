@@ -63,3 +63,14 @@ EOF
   [ "$status" -ne 0 ]
   [[ "$stderr" == *"ERROR: Could not extract token from script output"* ]]
 }
+
+@test "github:token:rotate --record keeps stdout token-only" {
+  write_fake_browser 'printf "%s\n" "browser diagnostic" "TOKEN:ghp_abc123"'
+
+  run --separate-stderr websites github:token:rotate ikma --record
+
+  [ "$status" -eq 0 ]
+  [ "$output" = "ghp_abc123" ]
+  [[ "$stderr" == *"Recording artifacts to:"* ]]
+  [[ "$stderr" == *"browser diagnostic"* ]]
+}
