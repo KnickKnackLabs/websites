@@ -21,7 +21,7 @@ source "$PROJECT_DIR/lib/browser.sh"
 setup_browser "${usage_keep:-false}" "${usage_site:-gusto.com}"
 
 # --- Run the Patchright script ---
-OUTPUT=$(browser run "${BROWSER_ARGS[@]}" "$PROJECT_DIR/scripts/gusto/home.mjs" 2>&1 | grep '^{') || true
+OUTPUT=$(browser run "${BROWSER_ARGS[@]}" "$PROJECT_DIR/scripts/gusto/dashboard.mjs" 2>&1 | grep '^{') || true
 
 if [ -z "$OUTPUT" ]; then
   echo "Failed to fetch Gusto dashboard." >&2

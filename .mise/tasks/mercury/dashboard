@@ -18,7 +18,7 @@ fi
 source "$PROJECT_DIR/lib/browser.sh"
 setup_browser "${usage_keep:-false}" "${usage_site:-mercury.com}"
 
-RAW_OUTPUT=$(browser run "${BROWSER_ARGS[@]}" "$PROJECT_DIR/scripts/mercury/home.mjs" 2>&1) || {
+RAW_OUTPUT=$(browser run "${BROWSER_ARGS[@]}" "$PROJECT_DIR/scripts/mercury/dashboard.mjs" 2>&1) || {
   echo "$RAW_OUTPUT" >&2
   exit 1
 }

@@ -1,9 +1,9 @@
-// home.mjs — Extract Gusto dashboard data (tasks, payments, upcoming)
+// dashboard.mjs — Extract Gusto dashboard data (tasks, payments, upcoming)
 //
 // Navigates to the Gusto home page and extracts structured data about
 // pending tasks, payment status, and upcoming deadlines.
 //
-// Usage: browser run ./scripts/gusto/home.mjs
+// Usage: browser run ./scripts/gusto/dashboard.mjs
 
 import { record } from '../record.mjs';
 

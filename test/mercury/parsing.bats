@@ -12,7 +12,7 @@ run_js() {
 
 @test "parseAccountLine: parses account name and balance" {
   run_js "
-    import { parseAccountLine } from '$SCRIPTS_DIR/home.mjs';
+    import { parseAccountLine } from '$SCRIPTS_DIR/dashboard.mjs';
     const result = parseAccountLine('Checking ••9145  \$4,593.59');
     console.log(JSON.stringify(result));
   "
@@ -22,7 +22,7 @@ run_js() {
 
 @test "parseAccountLine: returns null for unparseable text" {
   run_js "
-    import { parseAccountLine } from '$SCRIPTS_DIR/home.mjs';
+    import { parseAccountLine } from '$SCRIPTS_DIR/dashboard.mjs';
     console.log(parseAccountLine('No balance here'));
   "
   [ "$output" = "null" ]
