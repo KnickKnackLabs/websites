@@ -1,8 +1,8 @@
-// home.mjs — Extract Wave dashboard data (cash flow, P&L summaries)
+// dashboard.mjs — Extract Wave dashboard data (cash flow, P&L summaries)
 //
 // Navigates to the Wave dashboard and extracts summary information.
 //
-// Usage: browser run -s waveapps.com ./scripts/wave/home.mjs
+// Usage: browser run -s waveapps.com ./scripts/wave/dashboard.mjs
 
 import { record } from '../record.mjs';
 import { parseBusinessId } from './utils.mjs';

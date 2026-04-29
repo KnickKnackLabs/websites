@@ -12,7 +12,7 @@ run_js() {
 
 @test "parseTaskText: extracts title, description, and due date" {
   run_js "
-    import { parseTaskText } from '$SCRIPTS_DIR/home.mjs';
+    import { parseTaskText } from '$SCRIPTS_DIR/dashboard.mjs';
     const result = parseTaskText('Due Apr 14\nRun payroll\nTime to make employees happy');
     console.log(JSON.stringify(result));
   "
@@ -23,7 +23,7 @@ run_js() {
 
 @test "parseTaskText: handles missing due date" {
   run_js "
-    import { parseTaskText } from '$SCRIPTS_DIR/home.mjs';
+    import { parseTaskText } from '$SCRIPTS_DIR/dashboard.mjs';
     const result = parseTaskText('Run payroll\nTime to make employees happy');
     console.log(JSON.stringify(result));
   "
@@ -33,7 +33,7 @@ run_js() {
 
 @test "parseTaskText: strips Start button text" {
   run_js "
-    import { parseTaskText } from '$SCRIPTS_DIR/home.mjs';
+    import { parseTaskText } from '$SCRIPTS_DIR/dashboard.mjs';
     const result = parseTaskText('Due Apr 14\nRun payroll\nStart >\nSome description');
     console.log(JSON.stringify(result));
   "

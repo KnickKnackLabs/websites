@@ -1,6 +1,6 @@
-// home.mjs — Extract Mercury dashboard data (balances, accounts)
+// dashboard.mjs — Extract Mercury dashboard data (balances, accounts)
 //
-// Usage: browser run -s mercury.com ./scripts/mercury/home.mjs
+// Usage: browser run -s mercury.com ./scripts/mercury/dashboard.mjs
 
 import { record } from '../record.mjs';
 import { isMercuryAuthPage } from './auth.mjs';
