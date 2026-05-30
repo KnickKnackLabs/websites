@@ -2,6 +2,6 @@
 //MISE description="List Buttondown newsletters with sanitized fields"
 
 import { runResource } from '../../../../scripts/buttondown/api.mjs';
+import { printJsonTask } from '../../../../scripts/buttondown/task.mjs';
 
-const output = await runResource('newsletters', {});
-console.log(JSON.stringify(output, null, 2));
+await printJsonTask(() => runResource('newsletters', {}));

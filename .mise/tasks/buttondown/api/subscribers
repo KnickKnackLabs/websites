@@ -10,6 +10,7 @@
 //USAGE flag "--referrer-url <referrer_url>" default="" help="Referrer URL substring filter"
 
 import { runResource } from '../../../../scripts/buttondown/api.mjs';
+import { optionalUsageEnv, printJsonTask } from '../../../../scripts/buttondown/task.mjs';
 
 type SubscriberOptions = {
   limit: string;
@@ -22,21 +23,15 @@ type SubscriberOptions = {
   referrerUrl?: string;
 };
 
-function optionalEnv(name: string): string | undefined {
-  const value = process.env[name];
-  return value && value.length > 0 ? value : undefined;
-}
-
 const options: SubscriberOptions = {
   limit: process.env.usage_limit ?? '10',
   ordering: process.env.usage_ordering ?? '-creation_date',
-  type: optionalEnv('usage_type'),
-  tag: optionalEnv('usage_tag'),
-  dateStart: optionalEnv('usage_date_start'),
-  dateEnd: optionalEnv('usage_date_end'),
-  source: optionalEnv('usage_source'),
-  referrerUrl: optionalEnv('usage_referrer_url'),
+  type: optionalUsageEnv('type'),
+  tag: optionalUsageEnv('tag'),
+  dateStart: optionalUsageEnv('date_start'),
+  dateEnd: optionalUsageEnv('date_end'),
+  source: optionalUsageEnv('source'),
+  referrerUrl: optionalUsageEnv('referrer_url'),
 };
 
-const output = await runResource('subscribers', options);
-console.log(JSON.stringify(output, null, 2));
+await printJsonTask(() => runResource('subscribers', options));

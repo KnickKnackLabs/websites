@@ -3,8 +3,8 @@
 //USAGE flag "--page-size <page_size>" default="1000" help="Tag results per page"
 
 import { runResource } from '../../../../scripts/buttondown/api.mjs';
+import { printJsonTask } from '../../../../scripts/buttondown/task.mjs';
 
-const output = await runResource('tags', {
+await printJsonTask(() => runResource('tags', {
   pageSize: process.env.usage_page_size ?? '1000',
-});
-console.log(JSON.stringify(output, null, 2));
+}));

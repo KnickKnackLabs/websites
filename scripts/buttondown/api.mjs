@@ -1,7 +1,4 @@
-#!/usr/bin/env node
 // Sanitized read-only Buttondown API helpers for KKL website operations.
-
-import { pathToFileURL } from 'node:url';
 
 const BASE_URL = 'https://api.buttondown.com/v1';
 
@@ -53,75 +50,6 @@ const RESOURCE_KEEP_KEYS = {
   tags: TAG_KEEP_KEYS,
   subscribers: SUBSCRIBER_KEEP_KEYS,
 };
-
-const VALID_RESOURCES = new Set(Object.keys(RESOURCE_KEEP_KEYS));
-
-function readValue(args, index, flag) {
-  const value = args[index + 1];
-  if (!value || value.startsWith('--')) {
-    throw new Error(`${flag} requires a value`);
-  }
-  return value;
-}
-
-export function parseArgs(argv) {
-  const [resource, ...args] = argv;
-  if (!VALID_RESOURCES.has(resource)) {
-    throw new Error(`Usage: buttondown api <${[...VALID_RESOURCES].join('|')}> [filters]`);
-  }
-
-  const options = {
-    limit: '10',
-    ordering: '-creation_date',
-    pageSize: '1000',
-  };
-
-  for (let index = 0; index < args.length; index += 1) {
-    const flag = args[index];
-    switch (flag) {
-      case '--limit':
-        options.limit = readValue(args, index, flag);
-        index += 1;
-        break;
-      case '--ordering':
-        options.ordering = readValue(args, index, flag);
-        index += 1;
-        break;
-      case '--page-size':
-        options.pageSize = readValue(args, index, flag);
-        index += 1;
-        break;
-      case '--type':
-        options.type = readValue(args, index, flag);
-        index += 1;
-        break;
-      case '--tag':
-        options.tag = readValue(args, index, flag);
-        index += 1;
-        break;
-      case '--date-start':
-        options.dateStart = readValue(args, index, flag);
-        index += 1;
-        break;
-      case '--date-end':
-        options.dateEnd = readValue(args, index, flag);
-        index += 1;
-        break;
-      case '--source':
-        options.source = readValue(args, index, flag);
-        index += 1;
-        break;
-      case '--referrer-url':
-        options.referrerUrl = readValue(args, index, flag);
-        index += 1;
-        break;
-      default:
-        throw new Error(`Unknown option: ${flag}`);
-    }
-  }
-
-  return { resource, options };
-}
 
 function appendParams(url, params) {
   for (const [key, value] of Object.entries(params)) {
@@ -274,17 +202,4 @@ export async function runResource(resource, options, { get = apiGet } = {}) {
     default:
       throw new Error(`Unsupported resource: ${resource}`);
   }
-}
-
-async function main() {
-  const { resource, options } = parseArgs(process.argv.slice(2));
-  const output = await runResource(resource, options);
-  console.log(JSON.stringify(output, null, 2));
-}
-
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  main().catch(error => {
-    console.error(`ERROR: ${error.message}`);
-    process.exit(1);
-  });
 }

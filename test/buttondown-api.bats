@@ -22,23 +22,13 @@ websites() {
   [[ "$output" == *"--referrer-url <referrer_url>"* ]]
 }
 
-@test "parseArgs: subscriber filters become explicit options" {
-  run_js "
-    import { parseArgs } from '$SCRIPTS_DIR/api.mjs';
-    const parsed = parseArgs([
-      'subscribers',
-      '--type', 'regular',
-      '--tag', 'stories-site',
-      '--limit', '5',
-      '--date-start', '2026-05-30',
-      '--source', 'embedded_form',
-      '--referrer-url', 'stories.knacklabs.co'
-    ]);
-    console.log(JSON.stringify(parsed));
-  "
+@test "buttondown:api tasks print concise errors for operator failures" {
+  run env -u BUTTONDOWN_API_KEY bash -c 'cd "$REPO_DIR" && mise run -q buttondown:api:newsletters'
 
-  [ "$status" -eq 0 ]
-  [ "$output" = '{"resource":"subscribers","options":{"limit":"5","ordering":"-creation_date","pageSize":"1000","type":"regular","tag":"stories-site","dateStart":"2026-05-30","source":"embedded_form","referrerUrl":"stories.knacklabs.co"}}' ]
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"ERROR: BUTTONDOWN_API_KEY env var is required"* ]]
+  [[ "$output" != *" at "* ]]
+  [[ "$output" != *"scripts/buttondown/api.mjs"* ]]
 }
 
 @test "sanitizeListPayload: newsletters omit private account fields" {
