@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+#MISE description="List Buttondown tags with sanitized fields"
+#USAGE flag "--page-size <page_size>" default="1000" help="Tag results per page"
+
+set -euo pipefail
+
+node "$MISE_CONFIG_ROOT/scripts/buttondown/api.mjs" tags \
+  --page-size "$usage_page_size"

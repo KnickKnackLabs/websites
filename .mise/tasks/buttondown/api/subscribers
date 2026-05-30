@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+#MISE description="List Buttondown subscribers with sanitized fields"
+#USAGE flag "--type <type>" default="" help="Subscriber type filter (for example: regular, unactivated, unsubscribed)"
+#USAGE flag "--tag <tag>" default="" help="Tag name or Buttondown tag ID filter"
+#USAGE flag "--limit <limit>" default="10" help="Maximum subscriber results"
+#USAGE flag "--ordering <ordering>" default="-creation_date" help="Buttondown ordering parameter"
+#USAGE flag "--date-start <date_start>" default="" help="Only subscribers created on or after YYYY-MM-DD"
+#USAGE flag "--date-end <date_end>" default="" help="Only subscribers created before YYYY-MM-DD"
+#USAGE flag "--source <source>" default="" help="Subscriber source filter"
+#USAGE flag "--referrer-url <referrer_url>" default="" help="Referrer URL substring filter"
+
+set -euo pipefail
+
+args=(
+  subscribers
+  --limit "$usage_limit"
+  --ordering "$usage_ordering"
+)
+
+[ -n "$usage_type" ] && args+=(--type "$usage_type")
+[ -n "$usage_tag" ] && args+=(--tag "$usage_tag")
+[ -n "$usage_date_start" ] && args+=(--date-start "$usage_date_start")
+[ -n "$usage_date_end" ] && args+=(--date-end "$usage_date_end")
+[ -n "$usage_source" ] && args+=(--source "$usage_source")
+[ -n "$usage_referrer_url" ] && args+=(--referrer-url "$usage_referrer_url")
+
+node "$MISE_CONFIG_ROOT/scripts/buttondown/api.mjs" "${args[@]}"

@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+#MISE description="List Buttondown newsletters with sanitized fields"
+
+set -euo pipefail
+
+node "$MISE_CONFIG_ROOT/scripts/buttondown/api.mjs" newsletters
