@@ -4,7 +4,12 @@
 
 import { runResource } from '../../../../scripts/buttondown/api.mjs';
 
-const output = await runResource('tags', {
-  pageSize: process.env.usage_page_size ?? '1000',
-});
-console.log(JSON.stringify(output, null, 2));
+try {
+  const output = await runResource('tags', {
+    pageSize: process.env.usage_page_size ?? '1000',
+  });
+  console.log(JSON.stringify(output, null, 2));
+} catch (error) {
+  console.error(`ERROR: ${error instanceof Error ? error.message : String(error)}`);
+  process.exit(1);
+}

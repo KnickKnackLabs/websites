@@ -38,5 +38,10 @@ const options: SubscriberOptions = {
   referrerUrl: optionalEnv('usage_referrer_url'),
 };
 
-const output = await runResource('subscribers', options);
-console.log(JSON.stringify(output, null, 2));
+try {
+  const output = await runResource('subscribers', options);
+  console.log(JSON.stringify(output, null, 2));
+} catch (error) {
+  console.error(`ERROR: ${error instanceof Error ? error.message : String(error)}`);
+  process.exit(1);
+}

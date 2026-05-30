@@ -3,5 +3,10 @@
 
 import { runResource } from '../../../../scripts/buttondown/api.mjs';
 
-const output = await runResource('newsletters', {});
-console.log(JSON.stringify(output, null, 2));
+try {
+  const output = await runResource('newsletters', {});
+  console.log(JSON.stringify(output, null, 2));
+} catch (error) {
+  console.error(`ERROR: ${error instanceof Error ? error.message : String(error)}`);
+  process.exit(1);
+}
