@@ -1,0 +1,7 @@
+#!/usr/bin/env bun
+//MISE description="List Buttondown newsletters with sanitized fields"
+
+import { runResource } from '../../../../scripts/buttondown/api.mjs';
+import { printJsonTask } from '../../../../scripts/buttondown/task.mjs';
+
+await printJsonTask(() => runResource('newsletters', {}));

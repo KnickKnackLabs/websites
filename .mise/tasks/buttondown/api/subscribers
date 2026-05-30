@@ -1,0 +1,37 @@
+#!/usr/bin/env bun
+//MISE description="List Buttondown subscribers with sanitized fields"
+//USAGE flag "--type <type>" default="" help="Subscriber type filter (for example: regular, unactivated, unsubscribed)"
+//USAGE flag "--tag <tag>" default="" help="Tag name or Buttondown tag ID filter"
+//USAGE flag "--limit <limit>" default="10" help="Maximum subscriber results"
+//USAGE flag "--ordering <ordering>" default="-creation_date" help="Buttondown ordering parameter"
+//USAGE flag "--date-start <date_start>" default="" help="Only subscribers created on or after YYYY-MM-DD"
+//USAGE flag "--date-end <date_end>" default="" help="Only subscribers created before YYYY-MM-DD"
+//USAGE flag "--source <source>" default="" help="Subscriber source filter"
+//USAGE flag "--referrer-url <referrer_url>" default="" help="Referrer URL substring filter"
+
+import { runResource } from '../../../../scripts/buttondown/api.mjs';
+import { optionalUsageEnv, printJsonTask } from '../../../../scripts/buttondown/task.mjs';
+
+type SubscriberOptions = {
+  limit: string;
+  ordering: string;
+  type?: string;
+  tag?: string;
+  dateStart?: string;
+  dateEnd?: string;
+  source?: string;
+  referrerUrl?: string;
+};
+
+const options: SubscriberOptions = {
+  limit: process.env.usage_limit ?? '10',
+  ordering: process.env.usage_ordering ?? '-creation_date',
+  type: optionalUsageEnv('type'),
+  tag: optionalUsageEnv('tag'),
+  dateStart: optionalUsageEnv('date_start'),
+  dateEnd: optionalUsageEnv('date_end'),
+  source: optionalUsageEnv('source'),
+  referrerUrl: optionalUsageEnv('referrer_url'),
+};
+
+await printJsonTask(() => runResource('subscribers', options));
