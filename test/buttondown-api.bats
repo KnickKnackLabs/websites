@@ -3,9 +3,23 @@
 bats_require_minimum_version 1.5.0
 
 SCRIPTS_DIR="$BATS_TEST_DIRNAME/../scripts/buttondown"
+REPO_DIR="${REPO_DIR:-$(cd "$BATS_TEST_DIRNAME/.." && pwd)}"
 
 run_js() {
   run node --input-type=module -e "$1"
+}
+
+websites() {
+  cd "$REPO_DIR" && mise run -q "$@"
+}
+
+@test "buttondown:api:subscribers help exposes usage flags from TypeScript task" {
+  run websites buttondown:api:subscribers --help
+
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"--tag <tag>"* ]]
+  [[ "$output" == *"--type <type>"* ]]
+  [[ "$output" == *"--referrer-url <referrer_url>"* ]]
 }
 
 @test "parseArgs: subscriber filters become explicit options" {

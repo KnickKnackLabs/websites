@@ -1,8 +1,10 @@
-#!/usr/bin/env bash
-#MISE description="List Buttondown tags with sanitized fields"
-#USAGE flag "--page-size <page_size>" default="1000" help="Tag results per page"
+#!/usr/bin/env bun
+//MISE description="List Buttondown tags with sanitized fields"
+//USAGE flag "--page-size <page_size>" default="1000" help="Tag results per page"
 
-set -euo pipefail
+import { runResource } from '../../../../scripts/buttondown/api.mjs';
 
-node "$MISE_CONFIG_ROOT/scripts/buttondown/api.mjs" tags \
-  --page-size "$usage_page_size"
+const output = await runResource('tags', {
+  pageSize: process.env.usage_page_size ?? '1000',
+});
+console.log(JSON.stringify(output, null, 2));
