@@ -98,3 +98,14 @@ EOF
   [[ "$stderr" == *"TOKEN:[REDACTED_GITHUB_TOKEN]"* ]]
   [[ "$stderr" != *"TOKEN:ghp_created123"* ]]
 }
+
+@test "github:token:create accepts github_pat tokens" {
+  write_fake_browser 'printf "%s\n" "browser diagnostic" "TOKEN:github_pat_11ABC_def456"'
+
+  run --separate-stderr websites github:token:create ikma
+
+  [ "$status" -eq 0 ]
+  [ "$output" = "github_pat_11ABC_def456" ]
+  [[ "$stderr" == *"TOKEN:[REDACTED_GITHUB_TOKEN]"* ]]
+  [[ "$stderr" != *"github_pat_11ABC_def456"* ]]
+}

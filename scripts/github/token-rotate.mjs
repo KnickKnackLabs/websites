@@ -10,6 +10,7 @@ import { login } from './login.mjs';
 import { record } from '../record.mjs';
 import {
   findClassicTokenByName,
+  isGitHubToken,
   listClassicTokens,
   parseTokenFromText,
   parseTokenId,
@@ -96,7 +97,7 @@ export default async function({ page, args }) {
 
   // Wait for the new token to appear (wait for the token display element instead of a fixed sleep)
   await page.waitForLoadState('domcontentloaded');
-  const tokenDisplayLocator = page.locator('input#new-oauth-token, [data-clipboard-text^="ghp_"]').first();
+  const tokenDisplayLocator = page.locator('input#new-oauth-token, [data-clipboard-text^="ghp_"], [data-clipboard-text^="github_pat_"]').first();
   await tokenDisplayLocator.waitFor({ state: 'visible', timeout: 15000 }).catch(() => {
     console.error('Warning: token display element not found within timeout, will try fallback methods.');
   });
@@ -113,7 +114,7 @@ export default async function({ page, args }) {
 
   // Method 2: data-clipboard-text attribute (GitHub's copy button)
   if (!newToken) {
-    const clipboardEl = page.locator('[data-clipboard-text^="ghp_"]').first();
+    const clipboardEl = page.locator('[data-clipboard-text^="ghp_"], [data-clipboard-text^="github_pat_"]').first();
     if (await clipboardEl.isVisible({ timeout: 3000 }).catch(() => false)) {
       newToken = await clipboardEl.getAttribute('data-clipboard-text');
     }
@@ -125,7 +126,7 @@ export default async function({ page, args }) {
     newToken = parseTokenFromText(pageText);
   }
 
-  if (!newToken || !newToken.startsWith('ghp_')) {
+  if (!isGitHubToken(newToken)) {
     console.error('Could not capture new token from page.');
     console.error('The token may have been regenerated — check the browser window.');
     process.exit(1);

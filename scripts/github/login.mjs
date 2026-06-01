@@ -7,8 +7,93 @@
 //   import { login } from './login.mjs';
 //   await login(page, { agent: 'x1f9', username, password });
 
+import { execFileSync } from 'node:child_process';
+
 import { pollForVerificationCode } from './email-code.mjs';
 import { record } from '../record.mjs';
+
+const OTP_SELECTOR = '#otp, input[name="otp"], input[autocomplete="one-time-code"]';
+
+export function classifyOtpChallenge({ url = '', text = '' } = {}) {
+  const haystack = `${url}\n${text}`.toLowerCase();
+
+  if (/verify (your )?(device|email|sign[-\s]?in)|device verification|check your email|we sent[^\n]*(email|code)/.test(haystack)) {
+    return 'device';
+  }
+
+  if (/two[-\s]?factor|authenticator|recovery code|security key|github mobile/.test(haystack)) {
+    return 'totp';
+  }
+
+  if (url.includes('/login/device')) return 'device';
+  if (url.includes('/sessions/two-factor')) return 'totp';
+
+  return 'unknown';
+}
+
+export function githubTotpSecretKey(agent, env = process.env) {
+  return env.GITHUB_TOTP_SECRET_KEY || `${agent}/github-totp`;
+}
+
+export function normalizeTotpCode(value) {
+  const code = String(value || '').trim();
+  if (!/^\d{6,8}$/.test(code)) {
+    throw new Error('Generated GitHub TOTP code was not a 6-8 digit value.');
+  }
+  return code;
+}
+
+export function resolveSecretsBin({ env = process.env, execFile = execFileSync } = {}) {
+  if (env.WEBSITES_SECRETS_BIN) return env.WEBSITES_SECRETS_BIN;
+
+  try {
+    const cwd = env.MISE_CONFIG_ROOT || process.cwd();
+    const installDir = String(execFile('mise', ['-C', cwd, 'where', 'shiv:secrets@0.2'], {
+      encoding: 'utf8',
+      env,
+      stdio: ['ignore', 'pipe', 'pipe'],
+    })).trim();
+    if (installDir) return `${installDir}/bin/secrets`;
+  } catch {
+    // Fall back to PATH below; callers still fail closed if it lacks totp.
+  }
+
+  return 'secrets';
+}
+
+export function resolveGitHubTotpCode(agent, { env = process.env, execFile = execFileSync } = {}) {
+  if (env.GITHUB_TOTP_CODE) {
+    return normalizeTotpCode(env.GITHUB_TOTP_CODE);
+  }
+
+  const key = githubTotpSecretKey(agent, env);
+  const secretsBin = resolveSecretsBin({ env, execFile });
+  try {
+    return normalizeTotpCode(execFile(secretsBin, ['totp', key], {
+      encoding: 'utf8',
+      env,
+      stdio: ['ignore', 'pipe', 'pipe'],
+    }));
+  } catch (error) {
+    throw new Error(`GitHub two-factor authentication required, but ${key} could not produce a TOTP code via secrets totp.`);
+  }
+}
+
+async function submitOtpCode(page, otpInput, code) {
+  if (await otpInput.isVisible({ timeout: 5000 }).catch(() => false)) {
+    await otpInput.fill(code);
+  } else {
+    const textInput = page.locator('input[type="text"]:visible').first();
+    await textInput.fill(code);
+  }
+
+  await page.keyboard.press('Enter').catch(() => {});
+
+  const submitBtn = page.locator('button[type="submit"]:visible, input[type="submit"]:visible').first();
+  if (await submitBtn.isVisible({ timeout: 2000 }).catch(() => false)) {
+    await submitBtn.click();
+  }
+}
 
 // Login to GitHub. Resolves when the session is fully authenticated.
 // Throws on failure.
@@ -29,38 +114,26 @@ export async function login(page, { agent, username, password }) {
   const postLoginUrl = page.url();
   record(`login-post-submit-${agent}.html`, await page.content());
 
-  // Check for device verification. GitHub has used multiple URL shapes for
-  // this flow; the visible OTP input is more reliable than URL matching alone.
-  const otpInput = page.locator('#otp, input[name="otp"], input[autocomplete="one-time-code"]').first();
-  const needsDeviceVerification =
-    postLoginUrl.includes('/sessions/two-factor') ||
-    postLoginUrl.includes('/login/device') ||
-    await otpInput.isVisible({ timeout: 3000 }).catch(() => false);
+  const otpInput = page.locator(OTP_SELECTOR).first();
+  const otpVisible = await otpInput.isVisible({ timeout: 3000 }).catch(() => false);
 
-  if (needsDeviceVerification) {
-    console.log('Device verification required. Polling email...');
+  if (otpVisible || postLoginUrl.includes('/sessions/two-factor') || postLoginUrl.includes('/login/device')) {
+    const challengeText = await page.textContent('body').catch(() => '');
+    const challengeType = classifyOtpChallenge({ url: postLoginUrl, text: challengeText || '' });
 
-    const code = await pollForVerificationCode(agent);
-    if (!code) {
-      throw new Error('Could not find verification code in email.');
-    }
-
-    console.error('Got verification code.');
-
-    if (await otpInput.isVisible({ timeout: 5000 }).catch(() => false)) {
-      await otpInput.fill(code);
+    if (challengeType === 'totp') {
+      console.log('Two-factor authentication required. Generating TOTP code...');
+      await submitOtpCode(page, otpInput, resolveGitHubTotpCode(agent));
     } else {
-      const textInput = page.locator('input[type="text"]:visible').first();
-      await textInput.fill(code);
-    }
+      console.log('Device verification required. Polling email...');
 
-    // GitHub usually auto-submits the device code, but pressing Enter keeps the
-    // flow moving when auto-submit does not fire in automation.
-    await page.keyboard.press('Enter').catch(() => {});
+      const code = await pollForVerificationCode(agent);
+      if (!code) {
+        throw new Error('Could not find verification code in email.');
+      }
 
-    const submitBtn = page.locator('button[type="submit"]:visible, input[type="submit"]:visible').first();
-    if (await submitBtn.isVisible({ timeout: 2000 }).catch(() => false)) {
-      await submitBtn.click();
+      console.error('Got verification code.');
+      await submitOtpCode(page, otpInput, code);
     }
 
     // Wait for redirect past verification.

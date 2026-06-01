@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 #MISE description="Regenerate a GitHub classic PAT by name"
 #USAGE arg "<name>" help="Name of the token to regenerate"
-#USAGE flag "--login-id <id>" help="Identity used for email verification polling"
-#USAGE flag "--record" help="Record page artifacts for test fixtures"
+#USAGE flag "--login-id <id>" default="" help="Identity used for email verification polling/TOTP lookup"
+#USAGE flag "--record" default=#false help="Record page artifacts for test fixtures"
 
 set -euo pipefail
 
@@ -39,7 +39,7 @@ echo "$OUTPUT" | sed -E 's/^TOKEN:.*/TOKEN:[REDACTED_GITHUB_TOKEN]/' >&2
 # validation/error message below when the browser script exits 0 without TOKEN:.
 NEW_TOKEN=$(echo "$OUTPUT" | awk -F'TOKEN:' '/^TOKEN:/ { value=$2 } END { print value }')
 
-if [ -z "$NEW_TOKEN" ] || ! echo "$NEW_TOKEN" | grep -q '^ghp_'; then
+if [ -z "$NEW_TOKEN" ] || ! echo "$NEW_TOKEN" | grep -Eq '^(gh[pousr]_|github_pat_)'; then
   echo "ERROR: Could not extract token from script output" >&2
   exit 1
 fi

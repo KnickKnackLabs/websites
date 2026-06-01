@@ -8,7 +8,7 @@
 
 import { login } from './login.mjs';
 import { record } from '../record.mjs';
-import { parseTokenFromText } from './tokens.mjs';
+import { isGitHubToken, parseTokenFromText } from './tokens.mjs';
 
 const FULL_ACCESS_SCOPES = [
   'repo',
@@ -53,7 +53,7 @@ async function captureToken(page) {
     if (value) return value;
   }
 
-  const clipboardEl = page.locator('[data-clipboard-text^="ghp_"]').first();
+  const clipboardEl = page.locator('[data-clipboard-text^="ghp_"], [data-clipboard-text^="github_pat_"]').first();
   if (await clipboardEl.isVisible({ timeout: 3000 }).catch(() => false)) {
     const value = await clipboardEl.getAttribute('data-clipboard-text');
     if (value) return value;
@@ -118,14 +118,14 @@ export default async function({ page, args }) {
   await createButton.click();
 
   await page.waitForLoadState('domcontentloaded');
-  const tokenDisplayLocator = page.locator('input#new-oauth-token, [data-clipboard-text^="ghp_"]').first();
+  const tokenDisplayLocator = page.locator('input#new-oauth-token, [data-clipboard-text^="ghp_"], [data-clipboard-text^="github_pat_"]').first();
   await tokenDisplayLocator.waitFor({ state: 'visible', timeout: 15000 }).catch(() => {
     console.error('Warning: token display element not found within timeout, will try fallback methods.');
   });
   record(`token-created-page-${loginId}.html`, await page.content());
 
   const newToken = await captureToken(page);
-  if (!newToken || !newToken.startsWith('ghp_')) {
+  if (!isGitHubToken(newToken)) {
     console.error('Could not capture new token from page.');
     console.error('The token may have been created — check the browser window.');
     process.exit(1);
