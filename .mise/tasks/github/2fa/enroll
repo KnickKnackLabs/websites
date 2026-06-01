@@ -1,17 +1,29 @@
 #!/usr/bin/env bash
-#MISE description="Enroll GitHub two-factor authentication and store TOTP/recovery secrets"
-#USAGE arg "<login-id>" help="Identity used for email verification and secret keys"
+#MISE description="Enroll GitHub two-factor authentication and write TOTP/recovery material"
+#USAGE arg "<login-id>" help="Identity used for email verification"
 #USAGE flag "--token-name <name>" default="" help="Token name used only to trigger GitHub's 2FA gate (default: login-id)"
+#USAGE flag "--out <path>" default="" help="Write enrollment JSON containing TOTP seed and recovery codes"
 #USAGE flag "--record" default=#false help="Record page artifacts for test fixtures"
 
 set -euo pipefail
 
 LOGIN_ID="${usage_login_id:?Usage: websites github:2fa:enroll <login-id>}"
 TOKEN_NAME="${usage_token_name:-$LOGIN_ID}"
+OUT_PATH="${usage_out:-}"
 PROJECT_DIR="${MISE_CONFIG_ROOT:?MISE_CONFIG_ROOT not set}"
 
 if [ -z "${GITHUB_USERNAME:-}" ] || [ -z "${GITHUB_PASSWORD:-}" ]; then
   echo "ERROR: GITHUB_USERNAME and GITHUB_PASSWORD env vars required." >&2
+  exit 1
+fi
+
+if [ -z "$OUT_PATH" ]; then
+  echo "ERROR: --out <path> is required so enrollment material is written to a caller-managed file." >&2
+  exit 1
+fi
+
+if [ -e "$OUT_PATH" ]; then
+  echo "ERROR: --out path already exists: $OUT_PATH" >&2
   exit 1
 fi
 
@@ -22,4 +34,4 @@ if [ "${usage_record:-false}" = "true" ]; then
   echo "" >&2
 fi
 
-browser run "$PROJECT_DIR/scripts/github/two-factor.mjs" -- "$LOGIN_ID" "$TOKEN_NAME"
+browser run "$PROJECT_DIR/scripts/github/two-factor.mjs" -- "$LOGIN_ID" "$TOKEN_NAME" "$OUT_PATH"

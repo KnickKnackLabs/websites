@@ -127,76 +127,27 @@ run_js() {
   [ "$output" = "device" ]
 }
 
-@test "githubTotpSecretKey: defaults to agent github-totp key" {
-  run_js "
-    import { githubTotpSecretKey } from '$SCRIPTS_DIR/login.mjs';
-    console.log(githubTotpSecretKey('zeke', {}));
-  "
-  [ "$output" = "zeke/github-totp" ]
-}
-
-@test "githubTotpSecretKey: allows explicit secret key override" {
-  run_js "
-    import { githubTotpSecretKey } from '$SCRIPTS_DIR/login.mjs';
-    console.log(githubTotpSecretKey('zeke', { GITHUB_TOTP_SECRET_KEY: 'custom/key' }));
-  "
-  [ "$output" = "custom/key" ]
-}
-
 @test "resolveGitHubTotpCode: prefers explicit one-time code env" {
   run_js "
     import { resolveGitHubTotpCode } from '$SCRIPTS_DIR/login.mjs';
-    const code = resolveGitHubTotpCode('zeke', {
-      env: { GITHUB_TOTP_CODE: '123456' },
-      execFile: () => { throw new Error('should not call secrets'); }
-    });
+    const code = resolveGitHubTotpCode('zeke', { env: { GITHUB_TOTP_CODE: '123456' } });
     console.log(code);
   "
   [ "$output" = "123456" ]
 }
 
-@test "resolveSecretsBin: prefers explicit websites secrets binary" {
-  run_js "
-    import { resolveSecretsBin } from '$SCRIPTS_DIR/login.mjs';
-    console.log(resolveSecretsBin({ env: { WEBSITES_SECRETS_BIN: '/opt/secrets/bin/secrets' } }));
-  "
-  [ "$output" = "/opt/secrets/bin/secrets" ]
-}
-
-@test "resolveSecretsBin: resolves declared shiv secrets install through mise" {
-  run_js "
-    import { resolveSecretsBin } from '$SCRIPTS_DIR/login.mjs';
-    const calls = [];
-    const bin = resolveSecretsBin({
-      env: { MISE_CONFIG_ROOT: '/repo' },
-      execFile: (cmd, args) => {
-        calls.push([cmd, ...args].join(' '));
-        return '/mise/installs/shiv-secrets/0.2.0\\n';
-      }
-    });
-    console.log(bin);
-    console.log(calls[0]);
-  "
-  [ "$(echo "$output" | sed -n '1p')" = "/mise/installs/shiv-secrets/0.2.0/bin/secrets" ]
-  [ "$(echo "$output" | sed -n '2p')" = "mise -C /repo where shiv:secrets@0.2" ]
-}
-
-@test "resolveGitHubTotpCode: shells out to resolved secrets totp with agent key" {
+@test "resolveGitHubTotpCode: requires caller-injected code" {
   run_js "
     import { resolveGitHubTotpCode } from '$SCRIPTS_DIR/login.mjs';
-    const calls = [];
-    const code = resolveGitHubTotpCode('zeke', {
-      env: { WEBSITES_SECRETS_BIN: '/opt/secrets/bin/secrets' },
-      execFile: (cmd, args) => {
-        calls.push([cmd, ...args].join(' '));
-        return '654321\\n';
-      }
-    });
-    console.log(code);
-    console.log(calls[0]);
+    try {
+      resolveGitHubTotpCode('zeke', { env: {} });
+      console.log('no error');
+    } catch (error) {
+      console.log(error.message);
+    }
   "
-  [ "$(echo "$output" | sed -n '1p')" = "654321" ]
-  [ "$(echo "$output" | sed -n '2p')" = "/opt/secrets/bin/secrets totp zeke/github-totp" ]
+  [[ "$output" == *"set GITHUB_TOTP_CODE"* ]]
+  [[ "$output" != *"secrets"* ]]
 }
 
 @test "resolveGitHubTotpCode: fails closed on invalid generated code" {
@@ -238,6 +189,14 @@ run_js() {
     console.log(JSON.stringify(codes));
   "
   [ "$output" = '["a1b2c-3d4e5","f6g7h-8i9j0"]' ]
+}
+
+@test "generateTotpCode: matches RFC 6238 SHA1 test vector" {
+  run_js "
+    import { generateTotpCode } from '$SCRIPTS_DIR/two-factor.mjs';
+    console.log(generateTotpCode('GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ', { now: 59000, digits: 8 }));
+  "
+  [ "$output" = "94287082" ]
 }
 
 @test "sanitizeTwoFactorText: redacts setup and recovery secrets" {

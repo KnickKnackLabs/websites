@@ -1,13 +1,14 @@
 // two-factor.mjs — GitHub 2FA enrollment helpers
 
-import { execFileSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { createHmac } from 'node:crypto';
+import { readFileSync, writeFileSync } from 'node:fs';
 
-import { login, resolveSecretsBin } from './login.mjs';
+import { login } from './login.mjs';
 import { tokenCreationUrl } from './token-create.mjs';
 
 const SETUP_KEY_BUTTON = 'button:has-text("setup key")';
 const ENABLE_2FA_BUTTON = 'button:has-text("Enable 2FA now"), input[value*="Enable 2FA"], a:has-text("Enable 2FA")';
+const BASE32_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
 
 export function extractTwoFactorSetupKey(text) {
   const value = String(text || '');
@@ -33,6 +34,49 @@ export function sanitizeTwoFactorText(text) {
     .replace(/[A-Z2-7]{8}(?:\s+[A-Z2-7]{4,8})+/g, '[BASE32_GROUPED]')
     .replace(/[A-Z2-7]{16,}/g, '[BASE32]')
     .replace(/\b\d{6,8}\b/g, '[CODE]');
+}
+
+export function decodeBase32(value) {
+  const input = String(value || '').replace(/[=\s-]/g, '').toUpperCase();
+  if (!input || /[^A-Z2-7]/.test(input)) {
+    throw new Error('Invalid base32 value.');
+  }
+
+  let bits = 0;
+  let bitCount = 0;
+  const bytes = [];
+
+  for (const char of input) {
+    bits = (bits << 5) | BASE32_ALPHABET.indexOf(char);
+    bitCount += 5;
+    while (bitCount >= 8) {
+      bytes.push((bits >>> (bitCount - 8)) & 0xff);
+      bitCount -= 8;
+    }
+  }
+
+  return Buffer.from(bytes);
+}
+
+export function generateTotpCode(secret, { now = Date.now(), period = 30, digits = 6 } = {}) {
+  const key = decodeBase32(secret);
+  const counter = Math.floor(Math.floor(now / 1000) / period);
+  const counterBuffer = Buffer.alloc(8);
+  counterBuffer.writeBigUInt64BE(BigInt(counter));
+
+  const digest = createHmac('sha1', key).update(counterBuffer).digest();
+  const offset = digest[digest.length - 1] & 0x0f;
+  const binary = ((digest[offset] & 0x7f) << 24)
+    | ((digest[offset + 1] & 0xff) << 16)
+    | ((digest[offset + 2] & 0xff) << 8)
+    | (digest[offset + 3] & 0xff);
+  const modulo = 10 ** digits;
+  return String(binary % modulo).padStart(digits, '0');
+}
+
+export function writeEnrollmentOutput(path, payload) {
+  if (!path) return;
+  writeFileSync(path, `${JSON.stringify(payload, null, 2)}\n`, { mode: 0o600, flag: 'wx' });
 }
 
 async function textContent(page) {
@@ -119,7 +163,7 @@ async function summarizePage(page, label) {
   console.log(`${label}_CONTROLS: ${sanitizeTwoFactorText(JSON.stringify(controls))}`);
 }
 
-export async function enrollTwoFactor(page, { agent, secretsBin = resolveSecretsBin() }) {
+export async function enrollTwoFactor(page, { outputPath = '' } = {}) {
   const enableButton = page.locator(ENABLE_2FA_BUTTON).first();
   if (await enableButton.isVisible({ timeout: 3000 }).catch(() => false)) {
     await enableButton.click();
@@ -130,7 +174,9 @@ export async function enrollTwoFactor(page, { agent, secretsBin = resolveSecrets
   const setupKeyButton = page.locator(SETUP_KEY_BUTTON).first();
   if (!await setupKeyButton.isVisible({ timeout: 5000 }).catch(() => false)) {
     await summarizePage(page, 'TWO_FACTOR_ENROLLMENT_NOT_AVAILABLE');
-    return { status: 'not_available' };
+    const result = { status: 'not_available' };
+    writeEnrollmentOutput(outputPath, result);
+    return result;
   }
 
   await setupKeyButton.click();
@@ -138,19 +184,9 @@ export async function enrollTwoFactor(page, { agent, secretsBin = resolveSecrets
 
   const seed = extractTwoFactorSetupKey(await textContent(page));
   if (!seed) throw new Error('Could not extract GitHub two-factor setup key.');
+  console.log('TOTP_SECRET: captured');
 
-  execFileSync(secretsBin, ['set', `${agent}/github-totp`, '--value', seed], {
-    encoding: 'utf8',
-    env: process.env,
-    stdio: ['ignore', 'pipe', 'pipe'],
-  });
-  console.log(`TOTP_SECRET: stored ${agent}/github-totp`);
-
-  const code = execFileSync(secretsBin, ['totp', `${agent}/github-totp`], {
-    encoding: 'utf8',
-    env: process.env,
-    stdio: ['ignore', 'pipe', 'pipe'],
-  }).trim();
+  const code = generateTotpCode(seed);
 
   await closeOpenDialogs(page);
   await page.waitForTimeout(500);
@@ -185,16 +221,7 @@ export async function enrollTwoFactor(page, { agent, secretsBin = resolveSecrets
     throw new Error('GitHub did not show or download recovery codes after TOTP submission.');
   }
 
-  if (recoveryCodes.length) {
-    execFileSync(secretsBin, ['set', `${agent}/github-recovery-codes`, '--value', recoveryCodes.join('\n')], {
-      encoding: 'utf8',
-      env: process.env,
-      stdio: ['ignore', 'pipe', 'pipe'],
-    });
-    console.log(`RECOVERY_CODES: stored ${recoveryCodes.length} code(s) at ${agent}/github-recovery-codes`);
-  } else {
-    console.log('RECOVERY_CODES: none found on page');
-  }
+  console.log(`RECOVERY_CODES: captured ${recoveryCodes.length} code(s)`);
 
   const savedButton = page.locator('button:has-text("I have saved my recovery codes"):visible').first();
   if (await savedButton.isVisible({ timeout: 5000 }).catch(() => false)) {
@@ -208,14 +235,21 @@ export async function enrollTwoFactor(page, { agent, secretsBin = resolveSecrets
   }
 
   await summarizePage(page, 'TWO_FACTOR_AFTER_FINALIZE');
-  return { status: 'enrolled', recoveryCodeCount: recoveryCodes.length };
+  const result = { status: 'enrolled', totp_seed: seed, recovery_codes: recoveryCodes };
+  writeEnrollmentOutput(outputPath, result);
+  return result;
 }
 
 export default async function({ page, args }) {
   const loginId = args[0];
   const tokenName = args[1] || loginId;
+  const outputPath = args[2] || process.env.WEBSITES_GITHUB_2FA_OUT || '';
   if (!loginId) {
     console.error('Usage: pass login-id as first argument');
+    process.exit(1);
+  }
+  if (!outputPath) {
+    console.error('Output path required for 2FA enrollment material. Pass --out <path>.');
     process.exit(1);
   }
 
@@ -229,6 +263,6 @@ export default async function({ page, args }) {
   await login(page, { agent: loginId, username, password });
   await page.goto(tokenCreationUrl(tokenName));
   await page.waitForLoadState('domcontentloaded');
-  const result = await enrollTwoFactor(page, { agent: loginId });
+  const result = await enrollTwoFactor(page, { outputPath });
   console.log(`TWO_FACTOR_RESULT:${result.status}`);
 }
