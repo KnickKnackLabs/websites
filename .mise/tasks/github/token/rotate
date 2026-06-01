@@ -32,7 +32,7 @@ OUTPUT=$(
   exit 1
 }
 
-echo "$OUTPUT" >&2
+echo "$OUTPUT" | sed -E 's/^TOKEN:.*/TOKEN:[REDACTED_GITHUB_TOKEN]/' >&2
 
 # Extract and output just the token.
 # Use awk instead of a grep pipeline so pipefail doesn't bypass the explicit

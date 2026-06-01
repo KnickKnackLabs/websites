@@ -27,7 +27,7 @@ OUTPUT=$(browser run "$PROJECT_DIR/scripts/github/token-create.mjs" -- "$TOKEN_N
   exit 1
 }
 
-echo "$OUTPUT" >&2
+echo "$OUTPUT" | sed -E 's/^TOKEN:.*/TOKEN:[REDACTED_GITHUB_TOKEN]/' >&2
 
 NEW_TOKEN=$(echo "$OUTPUT" | awk -F'TOKEN:' '/^TOKEN:/ { value=$2 } END { print value }')
 

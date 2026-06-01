@@ -82,6 +82,8 @@ EOF
   [ "$output" = "ghp_abc123" ]
   [[ "$stderr" == *"Recording artifacts to:"* ]]
   [[ "$stderr" == *"browser diagnostic"* ]]
+  [[ "$stderr" == *"TOKEN:[REDACTED_GITHUB_TOKEN]"* ]]
+  [[ "$stderr" != *"TOKEN:ghp_abc123"* ]]
 }
 
 @test "github:token:create --record keeps stdout token-only" {
@@ -93,4 +95,6 @@ EOF
   [ "$output" = "ghp_created123" ]
   [[ "$stderr" == *"Recording artifacts to:"* ]]
   [[ "$stderr" == *"browser diagnostic"* ]]
+  [[ "$stderr" == *"TOKEN:[REDACTED_GITHUB_TOKEN]"* ]]
+  [[ "$stderr" != *"TOKEN:ghp_created123"* ]]
 }
