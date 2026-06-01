@@ -175,6 +175,24 @@ run_js() {
   [ "$output" = "null" ]
 }
 
+# --- token creation helpers ---
+
+@test "tokenCreationUrl: preselects description and scopes" {
+  run_js "
+    import { tokenCreationUrl } from '$SCRIPTS_DIR/token-create.mjs';
+    const url = new URL(tokenCreationUrl('c0da'));
+    console.log(url.pathname);
+    console.log(url.searchParams.get('description'));
+    console.log(url.searchParams.get('scopes').includes('repo'));
+    console.log(url.searchParams.get('scopes').includes('workflow'));
+  "
+  [ "$status" -eq 0 ]
+  [ "$(echo "$output" | sed -n '1p')" = "/settings/tokens/new" ]
+  [ "$(echo "$output" | sed -n '2p')" = "c0da" ]
+  [ "$(echo "$output" | sed -n '3p')" = "true" ]
+  [ "$(echo "$output" | sed -n '4p')" = "true" ]
+}
+
 # --- parseTokenId ---
 
 @test "parseTokenId: extracts ID from settings URL" {

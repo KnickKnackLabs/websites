@@ -64,6 +64,15 @@ EOF
   [[ "$stderr" == *"ERROR: Could not extract token from script output"* ]]
 }
 
+@test "github:token:create reports explicit extraction error when TOKEN line is missing" {
+  write_fake_browser 'printf "%s\n" "browser succeeded but emitted no token"'
+
+  run --separate-stderr websites github:token:create ikma
+
+  [ "$status" -ne 0 ]
+  [[ "$stderr" == *"ERROR: Could not extract token from script output"* ]]
+}
+
 @test "github:token:rotate --record keeps stdout token-only" {
   write_fake_browser 'printf "%s\n" "browser diagnostic" "TOKEN:ghp_abc123"'
 
@@ -71,6 +80,17 @@ EOF
 
   [ "$status" -eq 0 ]
   [ "$output" = "ghp_abc123" ]
+  [[ "$stderr" == *"Recording artifacts to:"* ]]
+  [[ "$stderr" == *"browser diagnostic"* ]]
+}
+
+@test "github:token:create --record keeps stdout token-only" {
+  write_fake_browser 'printf "%s\n" "browser diagnostic" "TOKEN:ghp_created123"'
+
+  run --separate-stderr websites github:token:create ikma --record
+
+  [ "$status" -eq 0 ]
+  [ "$output" = "ghp_created123" ]
   [[ "$stderr" == *"Recording artifacts to:"* ]]
   [[ "$stderr" == *"browser diagnostic"* ]]
 }
