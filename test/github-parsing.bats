@@ -211,6 +211,74 @@ run_js() {
   [[ "$output" != *"a1b2c-3d4e5"* ]]
 }
 
+@test "reserveEnrollmentOutput: claims output path before browser mutations" {
+  out="$BATS_TEST_TMPDIR/enrollment.json"
+  run_js "
+    import { existsSync, statSync } from 'node:fs';
+    import { reserveEnrollmentOutput } from '$SCRIPTS_DIR/two-factor.mjs';
+    const output = reserveEnrollmentOutput('$out');
+    console.log(existsSync('$out'));
+    console.log((statSync('$out').mode & 0o777).toString(8));
+    output.write({ status: 'enrolled', totp_seed: 'JBSWY3DPEHPK3PXP', recovery_codes: ['a1b2c-3d4e5'] });
+    console.log(statSync('$out').size > 0);
+    try {
+      reserveEnrollmentOutput('$out');
+      console.log('no error');
+    } catch (error) {
+      console.log(error.code);
+    }
+  "
+  [ "$(echo "$output" | sed -n '1p')" = "true" ]
+  [ "$(echo "$output" | sed -n '2p')" = "600" ]
+  [ "$(echo "$output" | sed -n '3p')" = "true" ]
+  [ "$(echo "$output" | sed -n '4p')" = "EEXIST" ]
+}
+
+@test "reserveEnrollmentOutput: removes empty reservation after failed enrollment" {
+  out="$BATS_TEST_TMPDIR/enrollment.json"
+  run_js "
+    import { existsSync } from 'node:fs';
+    import { reserveEnrollmentOutput } from '$SCRIPTS_DIR/two-factor.mjs';
+    const output = reserveEnrollmentOutput('$out');
+    console.log(existsSync('$out'));
+    output.discard();
+    console.log(existsSync('$out'));
+  "
+  [ "$(echo "$output" | sed -n '1p')" = "true" ]
+  [ "$(echo "$output" | sed -n '2p')" = "false" ]
+}
+
+@test "enrollTwoFactor: reserves outputPath before page inspection" {
+  out="$BATS_TEST_TMPDIR/enrollment.json"
+  run_js "
+    import { existsSync, readFileSync } from 'node:fs';
+    import { enrollTwoFactor } from '$SCRIPTS_DIR/two-factor.mjs';
+    let sawFirstPageProbe = false;
+    const page = {
+      textContent: async () => '',
+      locator: () => ({
+        first: () => ({
+          isVisible: async () => {
+            if (!sawFirstPageProbe) {
+              console.log(existsSync('$out'));
+              sawFirstPageProbe = true;
+            }
+            return false;
+          },
+        }),
+        evaluateAll: async () => [],
+        allTextContents: async () => [],
+      }),
+    };
+    const result = await enrollTwoFactor(page, { outputPath: '$out', entrypoint: 'current' });
+    console.log(result.status);
+    console.log(JSON.parse(readFileSync('$out', 'utf8')).status);
+  "
+  [ "$(echo "$output" | sed -n '1p')" = "true" ]
+  [ "$(echo "$output" | tail -2 | sed -n '1p')" = "not_available" ]
+  [ "$(echo "$output" | tail -1)" = "not_available" ]
+}
+
 @test "normalizeTwoFactorEntrypoint: defaults and validates values" {
   run_js "
     import { normalizeTwoFactorEntrypoint } from '$SCRIPTS_DIR/two-factor.mjs';

@@ -1,7 +1,7 @@
 // two-factor.mjs — GitHub 2FA enrollment helpers
 
 import { createHmac } from 'node:crypto';
-import { readFileSync, writeFileSync } from 'node:fs';
+import { closeSync, openSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
 
 import { login } from './login.mjs';
 import { tokenCreationUrl } from './token-create.mjs';
@@ -129,9 +129,38 @@ export function generateTotpCode(secret, { now = Date.now(), period = 30, digits
   return String(binary % modulo).padStart(digits, '0');
 }
 
-export function writeEnrollmentOutput(path, payload) {
-  if (!path) return;
-  writeFileSync(path, `${JSON.stringify(payload, null, 2)}\n`, { mode: 0o600, flag: 'wx' });
+export function reserveEnrollmentOutput(path) {
+  if (!path) return null;
+
+  const fd = openSync(path, 'wx', 0o600);
+  let closed = false;
+  let wrote = false;
+
+  return {
+    write(payload) {
+      if (closed) throw new Error('Enrollment output file is already closed.');
+      writeFileSync(fd, `${JSON.stringify(payload, null, 2)}\n`);
+      closeSync(fd);
+      closed = true;
+      wrote = true;
+    },
+    discard() {
+      if (!closed) {
+        closeSync(fd);
+        closed = true;
+      }
+      if (!wrote) unlinkSync(path);
+    },
+  };
+}
+
+export function writeEnrollmentOutput(output, payload) {
+  if (!output) return;
+  if (typeof output === 'string') {
+    writeFileSync(output, `${JSON.stringify(payload, null, 2)}\n`, { mode: 0o600, flag: 'wx' });
+    return;
+  }
+  output.write(payload);
 }
 
 async function textContent(page) {
@@ -320,90 +349,100 @@ async function summarizePage(page, label) {
 
 export async function enrollTwoFactor(page, {
   outputPath = '',
+  output = null,
   tokenName = 'github-2fa-enrollment',
   entrypoint = 'current',
   password = '',
 } = {}) {
-  const prepared = await prepareEnrollmentPage(page, { entrypoint, tokenName, password });
-  if (prepared.status === 'already_enabled') {
-    const result = { status: 'already_enabled' };
-    writeEnrollmentOutput(outputPath, result);
-    return result;
-  }
-  if (prepared.status !== 'ready') {
-    await summarizePage(page, 'TWO_FACTOR_ENROLLMENT_NOT_AVAILABLE');
-    const result = { status: 'not_available' };
-    writeEnrollmentOutput(outputPath, result);
-    return result;
-  }
+  const enrollmentOutput = output || (outputPath ? reserveEnrollmentOutput(outputPath) : null);
+  const ownsOutput = !output && !!enrollmentOutput;
 
-  const setupKeyButton = page.locator(SETUP_KEY_BUTTON).first();
-  if (!await setupKeyButton.isVisible({ timeout: 5000 }).catch(() => false)) {
-    await summarizePage(page, 'TWO_FACTOR_ENROLLMENT_NOT_AVAILABLE');
-    const result = { status: 'not_available' };
-    writeEnrollmentOutput(outputPath, result);
-    return result;
-  }
-
-  await setupKeyButton.click();
-  await page.waitForTimeout(500);
-
-  const seed = extractTwoFactorSetupKey(await textContent(page));
-  if (!seed) throw new Error('Could not extract GitHub two-factor setup key.');
-  console.log('TOTP_SECRET: captured');
-
-  const code = generateTotpCode(seed);
-
-  await closeOpenDialogs(page);
-  await page.waitForTimeout(500);
-  await setOtpValue(page, code);
-  await page.keyboard.press('Enter').catch(() => {});
-  await page.waitForLoadState('domcontentloaded').catch(() => {});
-  await page.waitForTimeout(2500);
-
-  let failureText = await textContent(page);
-  if (/two-factor code verification failed/i.test(failureText)) {
-    throw new Error('GitHub rejected the generated TOTP code.');
-  }
-
-  let recoveryCodes = await extractRecoveryCodesFromPage(page);
-  if (!recoveryCodes.length) recoveryCodes = await downloadRecoveryCodes(page);
-
-  if (!recoveryCodes.length) {
-    if (await clickEnabledContinueIfPresent(page)) {
-      await page.waitForLoadState('domcontentloaded').catch(() => {});
-      await page.waitForTimeout(2500);
-      failureText = await textContent(page);
-      if (/two-factor code verification failed/i.test(failureText)) {
-        throw new Error('GitHub rejected the generated TOTP code.');
-      }
-      recoveryCodes = await extractRecoveryCodesFromPage(page);
-      if (!recoveryCodes.length) recoveryCodes = await downloadRecoveryCodes(page);
+  try {
+    const prepared = await prepareEnrollmentPage(page, { entrypoint, tokenName, password });
+    if (prepared.status === 'already_enabled') {
+      const result = { status: 'already_enabled' };
+      writeEnrollmentOutput(enrollmentOutput, result);
+      return result;
     }
-  }
+    if (prepared.status !== 'ready') {
+      await summarizePage(page, 'TWO_FACTOR_ENROLLMENT_NOT_AVAILABLE');
+      const result = { status: 'not_available' };
+      writeEnrollmentOutput(enrollmentOutput, result);
+      return result;
+    }
 
-  if (!recoveryCodes.length) {
-    await summarizePage(page, 'TWO_FACTOR_NO_RECOVERY_CODES');
-    throw new Error('GitHub did not show or download recovery codes after TOTP submission.');
-  }
+    const setupKeyButton = page.locator(SETUP_KEY_BUTTON).first();
+    if (!await setupKeyButton.isVisible({ timeout: 5000 }).catch(() => false)) {
+      await summarizePage(page, 'TWO_FACTOR_ENROLLMENT_NOT_AVAILABLE');
+      const result = { status: 'not_available' };
+      writeEnrollmentOutput(enrollmentOutput, result);
+      return result;
+    }
 
-  console.log(`RECOVERY_CODES: captured ${recoveryCodes.length} code(s)`);
+    await setupKeyButton.click();
+    await page.waitForTimeout(500);
 
-  const savedButton = page.locator('button:has-text("I have saved my recovery codes"):visible').first();
-  if (await savedButton.isVisible({ timeout: 5000 }).catch(() => false)) {
-    await page.waitForFunction(() => {
-      const button = [...document.querySelectorAll('button')].find(el => /I have saved my recovery codes/i.test(el.innerText || ''));
-      return button && !button.disabled;
-    }, null, { timeout: 10000 });
-    await savedButton.click();
+    const seed = extractTwoFactorSetupKey(await textContent(page));
+    if (!seed) throw new Error('Could not extract GitHub two-factor setup key.');
+    console.log('TOTP_SECRET: captured');
+
+    const code = generateTotpCode(seed);
+
+    await closeOpenDialogs(page);
+    await page.waitForTimeout(500);
+    await setOtpValue(page, code);
+    await page.keyboard.press('Enter').catch(() => {});
     await page.waitForLoadState('domcontentloaded').catch(() => {});
     await page.waitForTimeout(2500);
-  }
 
-  await summarizePage(page, 'TWO_FACTOR_AFTER_FINALIZE');
-  const result = { status: 'enrolled', totp_seed: seed, recovery_codes: recoveryCodes };
-  writeEnrollmentOutput(outputPath, result);
-  return result;
+    let failureText = await textContent(page);
+    if (/two-factor code verification failed/i.test(failureText)) {
+      throw new Error('GitHub rejected the generated TOTP code.');
+    }
+
+    let recoveryCodes = await extractRecoveryCodesFromPage(page);
+    if (!recoveryCodes.length) recoveryCodes = await downloadRecoveryCodes(page);
+
+    if (!recoveryCodes.length) {
+      if (await clickEnabledContinueIfPresent(page)) {
+        await page.waitForLoadState('domcontentloaded').catch(() => {});
+        await page.waitForTimeout(2500);
+        failureText = await textContent(page);
+        if (/two-factor code verification failed/i.test(failureText)) {
+          throw new Error('GitHub rejected the generated TOTP code.');
+        }
+        recoveryCodes = await extractRecoveryCodesFromPage(page);
+        if (!recoveryCodes.length) recoveryCodes = await downloadRecoveryCodes(page);
+      }
+    }
+
+    if (!recoveryCodes.length) {
+      await summarizePage(page, 'TWO_FACTOR_NO_RECOVERY_CODES');
+      throw new Error('GitHub did not show or download recovery codes after TOTP submission.');
+    }
+
+    console.log(`RECOVERY_CODES: captured ${recoveryCodes.length} code(s)`);
+
+    const result = { status: 'enrolled', totp_seed: seed, recovery_codes: recoveryCodes };
+    writeEnrollmentOutput(enrollmentOutput, result);
+
+    const savedButton = page.locator('button:has-text("I have saved my recovery codes"):visible').first();
+    if (await savedButton.isVisible({ timeout: 5000 }).catch(() => false)) {
+      await page.waitForFunction(() => {
+        const button = [...document.querySelectorAll('button')].find(el => /I have saved my recovery codes/i.test(el.innerText || ''));
+        return button && !button.disabled;
+      }, null, { timeout: 10000 });
+      await savedButton.click();
+      await page.waitForLoadState('domcontentloaded').catch(() => {});
+      await page.waitForTimeout(2500);
+    }
+
+    await summarizePage(page, 'TWO_FACTOR_AFTER_FINALIZE');
+    return result;
+  } catch (error) {
+    if (ownsOutput) enrollmentOutput.discard();
+    throw error;
+  }
 }
 
 export default async function({ page, args }) {
@@ -427,12 +466,18 @@ export default async function({ page, args }) {
     process.exit(1);
   }
 
-  await login(page, { agent: loginId, username, password });
-  const result = await enrollTwoFactor(page, {
-    outputPath,
-    tokenName,
-    entrypoint,
-    password,
-  });
-  console.log(`TWO_FACTOR_RESULT:${result.status}`);
+  const output = reserveEnrollmentOutput(outputPath);
+  try {
+    await login(page, { agent: loginId, username, password });
+    const result = await enrollTwoFactor(page, {
+      output,
+      tokenName,
+      entrypoint,
+      password,
+    });
+    console.log(`TWO_FACTOR_RESULT:${result.status}`);
+  } catch (error) {
+    output?.discard();
+    throw error;
+  }
 }
