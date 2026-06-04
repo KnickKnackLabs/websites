@@ -46,10 +46,13 @@ export function classifyTwoFactorSettingsText(text) {
   const value = String(text || '').replace(/\s+/g, ' ').trim();
   if (!value) return 'unknown';
 
+  if (/two[-\s]?factor authentication\s+(?:is\s+)?not\s+enabled/i.test(value)) {
+    return 'available';
+  }
+
   if (/(disable|remove)\s+(?:two[-\s]?factor authentication|2fa)/i.test(value)
     || /two[-\s]?factor authentication\s+(?:is\s+)?enabled/i.test(value)
-    || /you(?:'|’)ve enabled two[-\s]?factor authentication/i.test(value)
-    || /recovery codes/i.test(value) && /two[-\s]?factor authentication/i.test(value) && !/enable\s+(?:two[-\s]?factor authentication|2fa)/i.test(value)) {
+    || /you(?:'|’)ve enabled two[-\s]?factor authentication/i.test(value)) {
     return 'enabled';
   }
 
@@ -210,8 +213,6 @@ async function twoFactorAlreadyEnabled(page) {
     'a:has-text("Disable two-factor authentication"):visible',
     'button:has-text("Disable 2FA"):visible',
     'a:has-text("Disable 2FA"):visible',
-    'a:has-text("View recovery codes"):visible',
-    'button:has-text("View recovery codes"):visible',
   ].join(', ')).first();
   if (await enabledControl.isVisible({ timeout: 1000 }).catch(() => false)) return true;
 

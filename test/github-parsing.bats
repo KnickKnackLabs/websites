@@ -233,11 +233,13 @@ run_js() {
     import { classifyTwoFactorSettingsText } from '$SCRIPTS_DIR/two-factor.mjs';
     console.log(classifyTwoFactorSettingsText('Two-factor authentication is enabled. View recovery codes.'));
     console.log(classifyTwoFactorSettingsText('Protect your account. Enable two-factor authentication.'));
+    console.log(classifyTwoFactorSettingsText('Recovery codes Two-factor authentication is not enabled yet. Enable two-factor authentication.'));
     console.log(classifyTwoFactorSettingsText('Password and authentication'));
   "
   [ "$(echo "$output" | sed -n '1p')" = "enabled" ]
   [ "$(echo "$output" | sed -n '2p')" = "available" ]
-  [ "$(echo "$output" | sed -n '3p')" = "unknown" ]
+  [ "$(echo "$output" | sed -n '3p')" = "available" ]
+  [ "$(echo "$output" | sed -n '4p')" = "unknown" ]
 }
 
 # --- parseEmailId ---
