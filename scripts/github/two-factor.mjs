@@ -6,9 +6,61 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { login } from './login.mjs';
 import { tokenCreationUrl } from './token-create.mjs';
 
-const SETUP_KEY_BUTTON = 'button:has-text("setup key")';
-const ENABLE_2FA_BUTTON = 'button:has-text("Enable 2FA now"), input[value*="Enable 2FA"], a:has-text("Enable 2FA")';
+const SECURITY_SETTINGS_URL = 'https://github.com/settings/security';
+const SETUP_KEY_BUTTON = 'button:has-text("setup key"):visible';
+const START_2FA_BUTTON = [
+  'button:has-text("Enable 2FA now"):visible',
+  'input[value*="Enable 2FA"]:visible',
+  'a:has-text("Enable 2FA"):visible',
+  'button:has-text("Enable two-factor authentication"):visible',
+  'a:has-text("Enable two-factor authentication"):visible',
+  'button:has-text("Set up two-factor authentication"):visible',
+  'a:has-text("Set up two-factor authentication"):visible',
+  'a[href*="/settings/two_factor_authentication/setup"]:visible',
+].join(', ');
+const AUTHENTICATOR_APP_BUTTON = [
+  'button:has-text("Authenticator app"):visible',
+  'a:has-text("Authenticator app"):visible',
+  'button:has-text("Set up using an app"):visible',
+  'a:has-text("Set up using an app"):visible',
+  'button:has-text("Set up with an authenticator app"):visible',
+  'a:has-text("Set up with an authenticator app"):visible',
+].join(', ');
+const SUDO_PASSWORD_SELECTOR = 'input[name="sudo_password"]:visible, input#sudo_password:visible';
 const BASE32_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
+const CLI_ENTRYPOINTS = new Set(['auto', 'settings', 'token']);
+
+export function twoFactorSecurityUrl() {
+  return SECURITY_SETTINGS_URL;
+}
+
+export function normalizeTwoFactorEntrypoint(value = 'auto') {
+  const normalized = String(value || 'auto').trim().toLowerCase();
+  if (!CLI_ENTRYPOINTS.has(normalized)) {
+    throw new Error('GitHub 2FA entrypoint must be one of: auto, settings, token.');
+  }
+  return normalized;
+}
+
+export function classifyTwoFactorSettingsText(text) {
+  const value = String(text || '').replace(/\s+/g, ' ').trim();
+  if (!value) return 'unknown';
+
+  if (/(disable|remove)\s+(?:two[-\s]?factor authentication|2fa)/i.test(value)
+    || /two[-\s]?factor authentication\s+(?:is\s+)?enabled/i.test(value)
+    || /you(?:'|’)ve enabled two[-\s]?factor authentication/i.test(value)
+    || /recovery codes/i.test(value) && /two[-\s]?factor authentication/i.test(value) && !/enable\s+(?:two[-\s]?factor authentication|2fa)/i.test(value)) {
+    return 'enabled';
+  }
+
+  if (/enable\s+(?:two[-\s]?factor authentication|2fa)/i.test(value)
+    || /set up\s+(?:two[-\s]?factor authentication|2fa)/i.test(value)
+    || /add\s+(?:two[-\s]?factor authentication|2fa)/i.test(value)) {
+    return 'available';
+  }
+
+  return 'unknown';
+}
 
 export function extractTwoFactorSetupKey(text) {
   const value = String(text || '');
@@ -118,6 +170,108 @@ async function clickEnabledContinueIfPresent(page) {
   });
 }
 
+async function settleAfterAction(page) {
+  await page.waitForLoadState('domcontentloaded').catch(() => {});
+  await page.waitForTimeout(1200);
+}
+
+async function clickFirstVisible(page, selector, { timeout = 2000 } = {}) {
+  const control = page.locator(selector).first();
+  if (!await control.isVisible({ timeout }).catch(() => false)) return false;
+  await control.click();
+  await settleAfterAction(page);
+  return true;
+}
+
+async function confirmSudoIfPresent(page, password) {
+  const passwordInput = page.locator(SUDO_PASSWORD_SELECTOR).first();
+  if (!await passwordInput.isVisible({ timeout: 1500 }).catch(() => false)) return false;
+  if (!password) throw new Error('GitHub asked to confirm access, but GITHUB_PASSWORD is unavailable.');
+
+  await passwordInput.fill(password);
+  const submit = page.locator('button[type="submit"]:visible, input[type="submit"]:visible').first();
+  if (await submit.isVisible({ timeout: 1000 }).catch(() => false)) {
+    await submit.click();
+  } else {
+    await page.keyboard.press('Enter').catch(() => {});
+  }
+  await settleAfterAction(page);
+  console.log('Confirmed access for GitHub security settings.');
+  return true;
+}
+
+async function setupKeyVisible(page) {
+  return await page.locator(SETUP_KEY_BUTTON).first().isVisible({ timeout: 1000 }).catch(() => false);
+}
+
+async function twoFactorAlreadyEnabled(page) {
+  const enabledControl = page.locator([
+    'button:has-text("Disable two-factor authentication"):visible',
+    'a:has-text("Disable two-factor authentication"):visible',
+    'button:has-text("Disable 2FA"):visible',
+    'a:has-text("Disable 2FA"):visible',
+    'a:has-text("View recovery codes"):visible',
+    'button:has-text("View recovery codes"):visible',
+  ].join(', ')).first();
+  if (await enabledControl.isVisible({ timeout: 1000 }).catch(() => false)) return true;
+
+  return classifyTwoFactorSettingsText(await textContent(page)) === 'enabled';
+}
+
+async function advanceTowardAuthenticatorSetup(page, { password = '' } = {}) {
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    if (await setupKeyVisible(page)) return true;
+    if (await confirmSudoIfPresent(page, password)) continue;
+    if (await clickFirstVisible(page, START_2FA_BUTTON)) continue;
+    if (await clickFirstVisible(page, AUTHENTICATOR_APP_BUTTON)) continue;
+    return false;
+  }
+  return await setupKeyVisible(page);
+}
+
+async function openSettingsEnrollment(page, { password = '' } = {}) {
+  console.log('Opening GitHub security settings for proactive 2FA enrollment...');
+  await page.goto(SECURITY_SETTINGS_URL);
+  await settleAfterAction(page);
+  await confirmSudoIfPresent(page, password);
+
+  if (await twoFactorAlreadyEnabled(page)) return { status: 'already_enabled' };
+  if (await advanceTowardAuthenticatorSetup(page, { password })) return { status: 'ready' };
+
+  await summarizePage(page, 'TWO_FACTOR_SETTINGS_ENTRYPOINT_NOT_AVAILABLE');
+  return { status: 'not_available' };
+}
+
+async function openTokenGateEnrollment(page, { tokenName, password = '' } = {}) {
+  console.log('Opening classic token creation page as 2FA enrollment fallback...');
+  await page.goto(tokenCreationUrl(tokenName));
+  await settleAfterAction(page);
+  await confirmSudoIfPresent(page, password);
+
+  if (await advanceTowardAuthenticatorSetup(page, { password })) return { status: 'ready' };
+  await summarizePage(page, 'TWO_FACTOR_TOKEN_GATE_NOT_AVAILABLE');
+  return { status: 'not_available' };
+}
+
+async function prepareEnrollmentPage(page, { entrypoint, tokenName, password = '' } = {}) {
+  if (entrypoint === 'current') {
+    if (await advanceTowardAuthenticatorSetup(page, { password })) return { status: 'ready' };
+    return { status: 'not_available' };
+  }
+
+  const normalized = normalizeTwoFactorEntrypoint(entrypoint);
+  const attempts = normalized === 'auto' ? ['settings', 'token'] : [normalized];
+
+  for (const attempt of attempts) {
+    const result = attempt === 'settings'
+      ? await openSettingsEnrollment(page, { password })
+      : await openTokenGateEnrollment(page, { tokenName, password });
+    if (result.status === 'ready' || result.status === 'already_enabled') return result;
+  }
+
+  return { status: 'not_available' };
+}
+
 async function extractRecoveryCodesFromPage(page) {
   const values = await page.evaluate(() => {
     const texts = [document.body?.innerText || ''];
@@ -163,12 +317,23 @@ async function summarizePage(page, label) {
   console.log(`${label}_CONTROLS: ${sanitizeTwoFactorText(JSON.stringify(controls))}`);
 }
 
-export async function enrollTwoFactor(page, { outputPath = '' } = {}) {
-  const enableButton = page.locator(ENABLE_2FA_BUTTON).first();
-  if (await enableButton.isVisible({ timeout: 3000 }).catch(() => false)) {
-    await enableButton.click();
-    await page.waitForLoadState('domcontentloaded').catch(() => {});
-    await page.waitForTimeout(1500);
+export async function enrollTwoFactor(page, {
+  outputPath = '',
+  tokenName = 'github-2fa-enrollment',
+  entrypoint = 'current',
+  password = '',
+} = {}) {
+  const prepared = await prepareEnrollmentPage(page, { entrypoint, tokenName, password });
+  if (prepared.status === 'already_enabled') {
+    const result = { status: 'already_enabled' };
+    writeEnrollmentOutput(outputPath, result);
+    return result;
+  }
+  if (prepared.status !== 'ready') {
+    await summarizePage(page, 'TWO_FACTOR_ENROLLMENT_NOT_AVAILABLE');
+    const result = { status: 'not_available' };
+    writeEnrollmentOutput(outputPath, result);
+    return result;
   }
 
   const setupKeyButton = page.locator(SETUP_KEY_BUTTON).first();
@@ -244,6 +409,7 @@ export default async function({ page, args }) {
   const loginId = args[0];
   const tokenName = args[1] || loginId;
   const outputPath = args[2] || process.env.WEBSITES_GITHUB_2FA_OUT || '';
+  const entrypoint = normalizeTwoFactorEntrypoint(args[3] || process.env.WEBSITES_GITHUB_2FA_ENTRYPOINT || 'auto');
   if (!loginId) {
     console.error('Usage: pass login-id as first argument');
     process.exit(1);
@@ -261,8 +427,11 @@ export default async function({ page, args }) {
   }
 
   await login(page, { agent: loginId, username, password });
-  await page.goto(tokenCreationUrl(tokenName));
-  await page.waitForLoadState('domcontentloaded');
-  const result = await enrollTwoFactor(page, { outputPath });
+  const result = await enrollTwoFactor(page, {
+    outputPath,
+    tokenName,
+    entrypoint,
+    password,
+  });
   console.log(`TWO_FACTOR_RESULT:${result.status}`);
 }

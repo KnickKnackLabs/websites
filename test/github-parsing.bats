@@ -211,6 +211,35 @@ run_js() {
   [[ "$output" != *"a1b2c-3d4e5"* ]]
 }
 
+@test "normalizeTwoFactorEntrypoint: defaults and validates values" {
+  run_js "
+    import { normalizeTwoFactorEntrypoint } from '$SCRIPTS_DIR/two-factor.mjs';
+    console.log(normalizeTwoFactorEntrypoint(''));
+    console.log(normalizeTwoFactorEntrypoint('SETTINGS'));
+    try {
+      normalizeTwoFactorEntrypoint('mystery');
+      console.log('no error');
+    } catch (error) {
+      console.log(error.message);
+    }
+  "
+  [ "$(echo "$output" | sed -n '1p')" = "auto" ]
+  [ "$(echo "$output" | sed -n '2p')" = "settings" ]
+  [[ "$(echo "$output" | sed -n '3p')" == *"auto, settings, token"* ]]
+}
+
+@test "classifyTwoFactorSettingsText: distinguishes enabled from available setup" {
+  run_js "
+    import { classifyTwoFactorSettingsText } from '$SCRIPTS_DIR/two-factor.mjs';
+    console.log(classifyTwoFactorSettingsText('Two-factor authentication is enabled. View recovery codes.'));
+    console.log(classifyTwoFactorSettingsText('Protect your account. Enable two-factor authentication.'));
+    console.log(classifyTwoFactorSettingsText('Password and authentication'));
+  "
+  [ "$(echo "$output" | sed -n '1p')" = "enabled" ]
+  [ "$(echo "$output" | sed -n '2p')" = "available" ]
+  [ "$(echo "$output" | sed -n '3p')" = "unknown" ]
+}
+
 # --- parseEmailId ---
 
 @test "parseEmailId: extracts ID from table line" {
