@@ -1,0 +1,48 @@
+#!/usr/bin/env bun
+//MISE description="Send a Buttondown draft preview to explicit recipients"
+//USAGE flag "--id <id>" default="" help="Buttondown email ID"
+//USAGE flag "--recipient <recipient>" default="" help="Comma-separated preview recipient email address(es)"
+//USAGE flag "--recipients-file <recipients_file>" default="" help="File of comma- or newline-separated preview recipients"
+//USAGE flag "--dry-run" default=#false help="Print the send request without calling Buttondown"
+//USAGE flag "--json" default=#false help="Print machine-readable JSON"
+
+import { sendDraftEmail } from '../../../../../scripts/buttondown/api.mjs';
+import { optionalUsageEnv, printTask, splitRecipients, usageFlag } from '../../../../../scripts/buttondown/task.mjs';
+
+function options() {
+  const id = optionalUsageEnv('id');
+  if (!id) throw new Error('--id is required');
+
+  const recipients = splitRecipients(
+    optionalUsageEnv('recipient'),
+    optionalUsageEnv('recipients_file'),
+  );
+  if (recipients.length === 0) throw new Error('--recipient or --recipients-file is required');
+
+  return { id, recipients };
+}
+
+function formatSendDraft(output: Record<string, unknown>): string {
+  const prefix = output.dry_run === true ? 'Dry run: would send Buttondown draft preview' : 'Sent Buttondown draft preview';
+  return [
+    prefix,
+    `id: ${output.id}`,
+    `recipient_count: ${output.recipient_count}`,
+  ].join('\n');
+}
+
+await printTask(async () => {
+  const { id, recipients } = options();
+  if (usageFlag('dry_run')) {
+    return {
+      dry_run: true,
+      action: 'send-draft',
+      id,
+      recipient_count: recipients.length,
+    };
+  }
+  return sendDraftEmail(id, recipients);
+}, {
+  json: usageFlag('json'),
+  human: formatSendDraft,
+});

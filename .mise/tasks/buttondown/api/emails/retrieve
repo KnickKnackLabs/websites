@@ -1,0 +1,27 @@
+#!/usr/bin/env bun
+//MISE description="Retrieve a Buttondown email with sanitized fields"
+//USAGE flag "--id <id>" default="" help="Buttondown email ID"
+//USAGE flag "--include-body" default=#false help="Include email body in output"
+//USAGE flag "--json" default=#false help="Print machine-readable JSON"
+
+import { retrieveEmail } from '../../../../../scripts/buttondown/api.mjs';
+import { optionalUsageEnv, printTask, usageFlag } from '../../../../../scripts/buttondown/task.mjs';
+
+function formatEmail(email: Record<string, unknown>): string {
+  return [
+    'Buttondown email',
+    `id: ${email.id}`,
+    `subject: ${email.subject}`,
+    `status: ${email.status}`,
+    email.absolute_url ? `url: ${email.absolute_url}` : undefined,
+    email.canonical_url ? `canonical_url: ${email.canonical_url}` : undefined,
+    typeof email.body === 'string' ? `body_bytes: ${email.body.length}` : undefined,
+  ].filter(Boolean).join('\n');
+}
+
+await printTask(() => retrieveEmail(optionalUsageEnv('id'), {
+  includeBody: usageFlag('include_body'),
+}), {
+  json: usageFlag('json'),
+  human: formatEmail,
+});

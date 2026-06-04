@@ -1,4 +1,4 @@
-// Sanitized read-only Buttondown API helpers for KKL website operations.
+// Sanitized Buttondown API helpers for website operations.
 
 const BASE_URL = 'https://api.buttondown.com/v1';
 
@@ -45,17 +45,39 @@ const SUBSCRIBER_KEEP_KEYS = new Set([
   'undeliverability_reason',
 ]);
 
+const EMAIL_KEEP_KEYS = new Set([
+  'id',
+  'creation_date',
+  'absolute_url',
+  'canonical_url',
+  'description',
+  'archival_mode',
+  'email_type',
+  'featured',
+  'image',
+  'modification_date',
+  'publish_date',
+  'slug',
+  'source',
+  'status',
+  'subject',
+]);
+
 const RESOURCE_KEEP_KEYS = {
   newsletters: NEWSLETTER_KEEP_KEYS,
   tags: TAG_KEEP_KEYS,
   subscribers: SUBSCRIBER_KEEP_KEYS,
+  emails: EMAIL_KEEP_KEYS,
 };
+
+const EDITOR_MODES = new Set(['auto', 'fancy', 'plaintext']);
 
 function appendParams(url, params) {
   for (const [key, value] of Object.entries(params)) {
     if (value === undefined || value === null || value === '') continue;
     if (Array.isArray(value)) {
       for (const item of value) {
+        if (item === undefined || item === null || item === '') continue;
         url.searchParams.append(key, item);
       }
     } else {
@@ -64,7 +86,10 @@ function appendParams(url, params) {
   }
 }
 
-export async function apiGet(path, params = {}, { token, baseUrl, fetchImpl } = {}) {
+export async function apiRequest(
+  path,
+  { method = 'GET', params = {}, body, token, baseUrl, fetchImpl, headers = {} } = {},
+) {
   const apiToken = token ?? process.env.BUTTONDOWN_API_KEY;
   if (!apiToken) {
     throw new Error('BUTTONDOWN_API_KEY env var is required');
@@ -74,20 +99,52 @@ export async function apiGet(path, params = {}, { token, baseUrl, fetchImpl } = 
   const url = new URL(`${root}${path}`);
   appendParams(url, params);
 
-  const response = await (fetchImpl ?? fetch)(url, {
-    headers: {
-      Accept: 'application/json',
-      Authorization: `Token ${apiToken}`,
-      'User-Agent': 'websites-buttondown-api/1.0',
-    },
-  });
+  const requestHeaders = {
+    Accept: 'application/json',
+    Authorization: `Token ${apiToken}`,
+    'User-Agent': 'websites-buttondown-api/1.0',
+    ...headers,
+  };
 
-  if (!response.ok) {
-    const body = await response.text();
-    throw new Error(`Buttondown API ${response.status} for ${path}: ${body.slice(0, 500)}`);
+  const request = {
+    method,
+    headers: requestHeaders,
+  };
+
+  if (body !== undefined) {
+    request.headers = {
+      ...request.headers,
+      'Content-Type': 'application/json',
+    };
+    request.body = JSON.stringify(body);
   }
 
-  return response.json();
+  const response = await (fetchImpl ?? fetch)(url, request);
+  const responseBody = await response.text();
+
+  if (!response.ok) {
+    throw new Error(`Buttondown API ${response.status} for ${path}: ${responseBody.slice(0, 500)}`);
+  }
+
+  if (responseBody.length === 0) return null;
+
+  try {
+    return JSON.parse(responseBody);
+  } catch {
+    return responseBody;
+  }
+}
+
+export async function apiGet(path, params = {}, options = {}) {
+  return apiRequest(path, { ...options, method: 'GET', params });
+}
+
+export async function apiPost(path, body, options = {}) {
+  return apiRequest(path, { ...options, method: 'POST', body });
+}
+
+export async function apiPatch(path, body, options = {}) {
+  return apiRequest(path, { ...options, method: 'PATCH', body });
 }
 
 export function listItems(payload) {
@@ -110,6 +167,12 @@ export function sanitizeObject(object, keepKeys) {
     if (keepKeys.has(key)) sanitized[key] = value;
   }
   return sanitized;
+}
+
+export function sanitizeEmailPayload(payload, { includeBody = false } = {}) {
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return {};
+  const keepKeys = includeBody ? new Set([...EMAIL_KEEP_KEYS, 'body']) : EMAIL_KEEP_KEYS;
+  return sanitizeObject(payload, keepKeys);
 }
 
 export function sanitizeListPayload(resource, payload) {
@@ -145,6 +208,23 @@ export function buildSubscriberParams(options, resolvedTagId) {
   return params;
 }
 
+export function buildEmailListParams(options) {
+  const params = {
+    ordering: options.ordering,
+    excluded_fields: ['body'],
+  };
+
+  if (options.status) params.status = [options.status];
+  if (options.subject) params.subject = options.subject;
+  if (options.source) params.source = [options.source];
+  if (options.creationDateStart) params.creation_date__start = options.creationDateStart;
+  if (options.creationDateEnd) params.creation_date__end = options.creationDateEnd;
+  if (options.publishDateStart) params.publish_date__start = options.publishDateStart;
+  if (options.publishDateEnd) params.publish_date__end = options.publishDateEnd;
+
+  return params;
+}
+
 export function tagIdFromTagsPayload(payload, tagName) {
   const tag = listItems(payload).find(item => item.name === tagName);
   return tag?.id ? String(tag.id) : null;
@@ -162,9 +242,16 @@ export async function resolveTagId(tag, { get = apiGet } = {}) {
   return tagId;
 }
 
-function compactFilters(options, resolvedTagId) {
-  const filters = {};
-  for (const [key, value] of Object.entries({
+function compactObject(entries) {
+  const output = {};
+  for (const [key, value] of Object.entries(entries)) {
+    if (value !== undefined && value !== null && value !== '') output[key] = value;
+  }
+  return output;
+}
+
+function compactSubscriberFilters(options, resolvedTagId) {
+  return compactObject({
     type: options.type,
     tag: options.tag,
     tag_id: resolvedTagId,
@@ -174,10 +261,117 @@ function compactFilters(options, resolvedTagId) {
     referrer_url: options.referrerUrl,
     ordering: options.ordering,
     limit: options.limit,
-  })) {
-    if (value !== undefined && value !== null && value !== '') filters[key] = value;
+  });
+}
+
+function compactEmailFilters(options) {
+  return compactObject({
+    status: options.status,
+    subject: options.subject,
+    source: options.source,
+    creation_date_start: options.creationDateStart,
+    creation_date_end: options.creationDateEnd,
+    publish_date_start: options.publishDateStart,
+    publish_date_end: options.publishDateEnd,
+    ordering: options.ordering,
+  });
+}
+
+export function bodyLooksLikeFrontmatter(body) {
+  return /^---\s*\r?\n/.test(body);
+}
+
+export function withEditorMode(body, editorMode = 'plaintext') {
+  if (!EDITOR_MODES.has(editorMode)) {
+    throw new Error(`Unsupported editor mode: ${editorMode}`);
   }
-  return filters;
+  if (editorMode === 'auto') return body;
+  if (/^<!--\s*buttondown-editor-mode:/i.test(body)) return body;
+  return `<!-- buttondown-editor-mode: ${editorMode} -->\n${body}`;
+}
+
+export function buildEmailCreatePayload(options) {
+  const subject = options.subject?.trim();
+  if (!subject) throw new Error('Email subject is required');
+
+  const rawBody = options.body ?? '';
+  if (bodyLooksLikeFrontmatter(rawBody)) {
+    throw new Error('Email body appears to start with YAML frontmatter; strip frontmatter before creating a Buttondown draft');
+  }
+
+  const payload = {
+    subject,
+    body: withEditorMode(rawBody, options.editorMode ?? 'plaintext'),
+    status: 'draft',
+  };
+
+  if (options.description) payload.description = options.description;
+  if (options.canonicalUrl) payload.canonical_url = options.canonicalUrl;
+  if (options.slug) payload.slug = options.slug;
+  if (options.image) payload.image = options.image;
+
+  return payload;
+}
+
+export function buildEmailUpdatePayload(options) {
+  const payload = {};
+
+  if (options.subject !== undefined) {
+    const subject = options.subject.trim();
+    if (!subject) throw new Error('Email subject cannot be empty');
+    payload.subject = subject;
+  }
+
+  if (options.body !== undefined) {
+    if (bodyLooksLikeFrontmatter(options.body)) {
+      throw new Error('Email body appears to start with YAML frontmatter; strip frontmatter before updating a Buttondown draft');
+    }
+    payload.body = withEditorMode(options.body, options.editorMode ?? 'plaintext');
+  }
+
+  if (options.description !== undefined) payload.description = options.description;
+  if (options.canonicalUrl !== undefined) payload.canonical_url = options.canonicalUrl;
+  if (options.slug !== undefined) payload.slug = options.slug;
+  if (options.image !== undefined) payload.image = options.image;
+
+  if (Object.keys(payload).length === 0) {
+    throw new Error('At least one email field is required for update');
+  }
+
+  return payload;
+}
+
+export async function createEmailDraft(options, { post = apiPost } = {}) {
+  const payload = buildEmailCreatePayload(options);
+  const email = await post('/emails', payload);
+  return sanitizeEmailPayload(email);
+}
+
+export async function updateEmail(id, options, { patch = apiPatch } = {}) {
+  if (!id) throw new Error('Email ID is required');
+  const payload = buildEmailUpdatePayload(options);
+  const email = await patch(`/emails/${encodeURIComponent(id)}`, payload);
+  return sanitizeEmailPayload(email);
+}
+
+export async function retrieveEmail(id, { includeBody = false, get = apiGet } = {}) {
+  if (!id) throw new Error('Email ID is required');
+  const email = await get(`/emails/${encodeURIComponent(id)}`);
+  return sanitizeEmailPayload(email, { includeBody });
+}
+
+export async function sendDraftEmail(id, recipients, { post = apiPost } = {}) {
+  if (!id) throw new Error('Email ID is required');
+  if (!Array.isArray(recipients) || recipients.length === 0) {
+    throw new Error('At least one draft recipient is required');
+  }
+
+  await post(`/emails/${encodeURIComponent(id)}/send-draft`, { recipients });
+  return {
+    action: 'send-draft',
+    id,
+    recipient_count: recipients.length,
+  };
 }
 
 export async function runResource(resource, options, { get = apiGet } = {}) {
@@ -196,7 +390,15 @@ export async function runResource(resource, options, { get = apiGet } = {}) {
       const payload = await get('/subscribers', params);
       return {
         ...sanitizeListPayload(resource, payload),
-        filters: compactFilters(options, resolvedTagId),
+        filters: compactSubscriberFilters(options, resolvedTagId),
+      };
+    }
+    case 'emails': {
+      const params = buildEmailListParams(options);
+      const payload = await get('/emails', params);
+      return {
+        ...sanitizeListPayload(resource, payload),
+        filters: compactEmailFilters(options),
       };
     }
     default:

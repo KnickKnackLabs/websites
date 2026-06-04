@@ -20,6 +20,26 @@ websites() {
   [[ "$output" == *"--tag <tag>"* ]]
   [[ "$output" == *"--type <type>"* ]]
   [[ "$output" == *"--referrer-url <referrer_url>"* ]]
+  [[ "$output" == *"--json"* ]]
+}
+
+@test "buttondown:api:emails:create help exposes file-backed and JSON flags" {
+  run websites buttondown:api:emails:create --help
+
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"--body-file <body_file>"* ]]
+  [[ "$output" == *"--dry-run"* ]]
+  [[ "$output" == *"--json"* ]]
+}
+
+@test "buttondown:api:emails:update help exposes file-backed and JSON flags" {
+  run websites buttondown:api:emails:update --help
+
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"--id <id>"* ]]
+  [[ "$output" == *"--body-file <body_file>"* ]]
+  [[ "$output" == *"--dry-run"* ]]
+  [[ "$output" == *"--json"* ]]
 }
 
 @test "buttondown:api tasks print concise errors for operator failures" {
@@ -29,6 +49,62 @@ websites() {
   [[ "$output" == *"ERROR: BUTTONDOWN_API_KEY env var is required"* ]]
   [[ "$output" != *" at "* ]]
   [[ "$output" != *"scripts/buttondown/api.mjs"* ]]
+}
+
+@test "buttondown:api:emails:create dry-run builds draft payload without API key" {
+  body="$BATS_TEST_TMPDIR/body.md"
+  cat > "$body" <<'EOF'
+Hello **newsletter** readers.
+EOF
+
+  run env -u BUTTONDOWN_API_KEY bash -c 'cd "$REPO_DIR" && mise run -q buttondown:api:emails:create --subject "Hello" --canonical-url "https://example.com/story" --body-file "$0" --dry-run --json' "$body"
+
+  [ "$status" -eq 0 ]
+  echo "$output" | jq -e '.dry_run == true' >/dev/null
+  echo "$output" | jq -e '.payload.subject == "Hello"' >/dev/null
+  echo "$output" | jq -e '.payload.status == "draft"' >/dev/null
+  echo "$output" | jq -e '.payload.canonical_url == "https://example.com/story"' >/dev/null
+  echo "$output" | jq -e '.payload.body | startswith("<!-- buttondown-editor-mode: plaintext -->")' >/dev/null
+}
+
+@test "buttondown:api:emails:create rejects frontmatter before API calls" {
+  body="$BATS_TEST_TMPDIR/frontmatter.md"
+  cat > "$body" <<'EOF'
+---
+title: Nope
+---
+
+Body.
+EOF
+
+  run env -u BUTTONDOWN_API_KEY bash -c 'cd "$REPO_DIR" && mise run -q buttondown:api:emails:create --subject "Nope" --body-file "$0" --dry-run' "$body"
+
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"ERROR: Email body appears to start with YAML frontmatter"* ]]
+  [[ "$output" != *"BUTTONDOWN_API_KEY"* ]]
+}
+
+@test "buttondown:api:emails:update dry-run builds patch payload without API key" {
+  body="$BATS_TEST_TMPDIR/update-body.md"
+  cat > "$body" <<'EOF'
+Updated **newsletter** body.
+EOF
+
+  run env -u BUTTONDOWN_API_KEY bash -c 'cd "$REPO_DIR" && mise run -q buttondown:api:emails:update --id email_123 --body-file "$0" --dry-run --json' "$body"
+
+  [ "$status" -eq 0 ]
+  echo "$output" | jq -e '.dry_run == true' >/dev/null
+  echo "$output" | jq -e '.id == "email_123"' >/dev/null
+  echo "$output" | jq -e '.payload.body | startswith("<!-- buttondown-editor-mode: plaintext -->")' >/dev/null
+}
+
+@test "buttondown:api:emails:send-draft dry-run reports count without recipient addresses" {
+  run websites buttondown:api:emails:send-draft --id email_123 --recipient test@example.com --dry-run --json
+
+  [ "$status" -eq 0 ]
+  echo "$output" | jq -e '.dry_run == true' >/dev/null
+  echo "$output" | jq -e '.recipient_count == 1' >/dev/null
+  [[ "$output" != *"test@example.com"* ]]
 }
 
 @test "sanitizeListPayload: newsletters omit private account fields" {
@@ -115,4 +191,81 @@ websites() {
 
   [ "$status" -eq 0 ]
   [ "$output" = '{"ordering":"-creation_date","limit":"10","type":"regular","tag":"sub_tag_abc123","date__start":"2026-05-30","referrer_url":"stories.knacklabs.co"}' ]
+}
+
+@test "sanitizeListPayload: emails omit bodies by default" {
+  run_js "
+    import { sanitizeListPayload } from '$SCRIPTS_DIR/api.mjs';
+    const payload = {
+      count: 1,
+      results: [{
+        id: 'email_123',
+        subject: 'Hello',
+        status: 'draft',
+        body: 'secret draft body',
+        canonical_url: 'https://example.com/story',
+        absolute_url: 'https://buttondown.com/example/archive/hello/'
+      }]
+    };
+    console.log(JSON.stringify(sanitizeListPayload('emails', payload)));
+  "
+
+  [ "$status" -eq 0 ]
+  [[ "$output" == *'"subject":"Hello"'* ]]
+  [[ "$output" == *'"status":"draft"'* ]]
+  [[ "$output" != *'secret draft body'* ]]
+}
+
+@test "buildEmailCreatePayload: creates explicit drafts and rejects Buttondown auto-send default" {
+  run_js "
+    import { buildEmailCreatePayload } from '$SCRIPTS_DIR/api.mjs';
+    const payload = buildEmailCreatePayload({
+      subject: 'Hello',
+      body: 'Body',
+      canonicalUrl: 'https://example.com/story'
+    });
+    console.log(JSON.stringify(payload));
+  "
+
+  [ "$status" -eq 0 ]
+  echo "$output" | jq -e '.subject == "Hello"' >/dev/null
+  echo "$output" | jq -e '.status == "draft"' >/dev/null
+  echo "$output" | jq -e '.canonical_url == "https://example.com/story"' >/dev/null
+  echo "$output" | jq -e '.body == "<!-- buttondown-editor-mode: plaintext -->\nBody"' >/dev/null
+}
+
+@test "updateEmail: patches sanitized draft fields" {
+  run_js "
+    import { updateEmail } from '$SCRIPTS_DIR/api.mjs';
+    const calls = [];
+    const patch = async (path, body) => {
+      calls.push({ path, body });
+      return { id: 'email_123', subject: body.subject, status: 'draft', body: body.body };
+    };
+    const output = await updateEmail('email_123', { subject: 'Updated', body: 'Body' }, { patch });
+    console.log(JSON.stringify({ output, calls }));
+  "
+
+  [ "$status" -eq 0 ]
+  echo "$output" | jq -e '.output.id == "email_123"' >/dev/null
+  echo "$output" | jq -e '.output.subject == "Updated"' >/dev/null
+  echo "$output" | jq -e '.output.body == null' >/dev/null
+  echo "$output" | jq -e '.calls[0].path == "/emails/email_123"' >/dev/null
+  echo "$output" | jq -e '.calls[0].body.body == "<!-- buttondown-editor-mode: plaintext -->\nBody"' >/dev/null
+}
+
+@test "sendDraftEmail: posts recipients to Buttondown draft endpoint" {
+  run_js "
+    import { sendDraftEmail } from '$SCRIPTS_DIR/api.mjs';
+    const calls = [];
+    const post = async (path, body) => {
+      calls.push({ path, body });
+      return null;
+    };
+    const output = await sendDraftEmail('email_123', ['test@example.com'], { post });
+    console.log(JSON.stringify({ output, calls }));
+  "
+
+  [ "$status" -eq 0 ]
+  [ "$output" = '{"output":{"action":"send-draft","id":"email_123","recipient_count":1},"calls":[{"path":"/emails/email_123/send-draft","body":{"recipients":["test@example.com"]}}]}' ]
 }

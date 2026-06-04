@@ -1,0 +1,40 @@
+#!/usr/bin/env bun
+//MISE description="List Buttondown emails with sanitized fields"
+//USAGE flag "--status <status>" default="" help="Email status filter (for example: draft, scheduled, sent)"
+//USAGE flag "--subject <subject>" default="" help="Subject substring filter"
+//USAGE flag "--source <source>" default="" help="Email source filter"
+//USAGE flag "--ordering <ordering>" default="-creation_date" help="Buttondown ordering parameter"
+//USAGE flag "--creation-date-start <creation_date_start>" default="" help="Only emails created on or after YYYY-MM-DD"
+//USAGE flag "--creation-date-end <creation_date_end>" default="" help="Only emails created before YYYY-MM-DD"
+//USAGE flag "--publish-date-start <publish_date_start>" default="" help="Only emails published on or after YYYY-MM-DD"
+//USAGE flag "--publish-date-end <publish_date_end>" default="" help="Only emails published before YYYY-MM-DD"
+//USAGE flag "--json" default=#false help="Print machine-readable JSON"
+
+import { runResource } from '../../../../../scripts/buttondown/api.mjs';
+import { optionalUsageEnv, printTask, usageFlag } from '../../../../../scripts/buttondown/task.mjs';
+
+type EmailListOptions = {
+  ordering: string;
+  status?: string;
+  subject?: string;
+  source?: string;
+  creationDateStart?: string;
+  creationDateEnd?: string;
+  publishDateStart?: string;
+  publishDateEnd?: string;
+};
+
+const options: EmailListOptions = {
+  ordering: process.env.usage_ordering ?? '-creation_date',
+  status: optionalUsageEnv('status'),
+  subject: optionalUsageEnv('subject'),
+  source: optionalUsageEnv('source'),
+  creationDateStart: optionalUsageEnv('creation_date_start'),
+  creationDateEnd: optionalUsageEnv('creation_date_end'),
+  publishDateStart: optionalUsageEnv('publish_date_start'),
+  publishDateEnd: optionalUsageEnv('publish_date_end'),
+};
+
+await printTask(() => runResource('emails', options), {
+  json: usageFlag('json'),
+});
