@@ -1,8 +1,14 @@
 // tokens.mjs — Helpers for GitHub classic PAT pages
 
-// Extract a classic PAT (ghp_...) from page text or HTML.
+export const GITHUB_TOKEN_PATTERN = /(gh[pousr]_[a-zA-Z0-9_]+|github_pat_[a-zA-Z0-9_]+)/;
+
+export function isGitHubToken(value) {
+  return GITHUB_TOKEN_PATTERN.test(String(value || ''));
+}
+
+// Extract a GitHub PAT from page text or HTML.
 export function parseTokenFromText(text) {
-  const match = text.match(/(ghp_[a-zA-Z0-9]+)/);
+  const match = String(text || '').match(GITHUB_TOKEN_PATTERN);
   return match ? match[1] : null;
 }
 

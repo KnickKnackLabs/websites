@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+#MISE description="Enroll GitHub two-factor authentication and store TOTP/recovery secrets"
+#USAGE arg "<login-id>" help="Identity used for email verification and secret keys"
+#USAGE flag "--token-name <name>" default="" help="Token name used only to trigger GitHub's 2FA gate (default: login-id)"
+#USAGE flag "--record" default=#false help="Record page artifacts for test fixtures"
+
+set -euo pipefail
+
+LOGIN_ID="${usage_login_id:?Usage: websites github:2fa:enroll <login-id>}"
+TOKEN_NAME="${usage_token_name:-$LOGIN_ID}"
+PROJECT_DIR="${MISE_CONFIG_ROOT:?MISE_CONFIG_ROOT not set}"
+
+if [ -z "${GITHUB_USERNAME:-}" ] || [ -z "${GITHUB_PASSWORD:-}" ]; then
+  echo "ERROR: GITHUB_USERNAME and GITHUB_PASSWORD env vars required." >&2
+  exit 1
+fi
+
+if [ "${usage_record:-false}" = "true" ]; then
+  RECORD_DIR="$PROJECT_DIR/test/fixtures/$(date +%Y%m%d-%H%M%S)"
+  export WEBSITES_RECORD_DIR="$RECORD_DIR"
+  echo "Recording artifacts to: $RECORD_DIR" >&2
+  echo "" >&2
+fi
+
+browser run "$PROJECT_DIR/scripts/github/two-factor.mjs" -- "$LOGIN_ID" "$TOKEN_NAME"

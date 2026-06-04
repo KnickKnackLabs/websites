@@ -103,6 +103,155 @@ run_js() {
   [ "$output" = "false" ]
 }
 
+# --- GitHub login OTP challenge handling ---
+
+@test "classifyOtpChallenge: detects authenticator two-factor challenge" {
+  run_js "
+    import { classifyOtpChallenge } from '$SCRIPTS_DIR/login.mjs';
+    console.log(classifyOtpChallenge({
+      url: 'https://github.com/sessions/two-factor',
+      text: 'Two-factor authentication Enter the authentication code from your authenticator app.'
+    }));
+  "
+  [ "$output" = "totp" ]
+}
+
+@test "classifyOtpChallenge: detects email device verification" {
+  run_js "
+    import { classifyOtpChallenge } from '$SCRIPTS_DIR/login.mjs';
+    console.log(classifyOtpChallenge({
+      url: 'https://github.com/login/device',
+      text: 'Verify your device. We sent a code to your email address.'
+    }));
+  "
+  [ "$output" = "device" ]
+}
+
+@test "githubTotpSecretKey: defaults to agent github-totp key" {
+  run_js "
+    import { githubTotpSecretKey } from '$SCRIPTS_DIR/login.mjs';
+    console.log(githubTotpSecretKey('zeke', {}));
+  "
+  [ "$output" = "zeke/github-totp" ]
+}
+
+@test "githubTotpSecretKey: allows explicit secret key override" {
+  run_js "
+    import { githubTotpSecretKey } from '$SCRIPTS_DIR/login.mjs';
+    console.log(githubTotpSecretKey('zeke', { GITHUB_TOTP_SECRET_KEY: 'custom/key' }));
+  "
+  [ "$output" = "custom/key" ]
+}
+
+@test "resolveGitHubTotpCode: prefers explicit one-time code env" {
+  run_js "
+    import { resolveGitHubTotpCode } from '$SCRIPTS_DIR/login.mjs';
+    const code = resolveGitHubTotpCode('zeke', {
+      env: { GITHUB_TOTP_CODE: '123456' },
+      execFile: () => { throw new Error('should not call secrets'); }
+    });
+    console.log(code);
+  "
+  [ "$output" = "123456" ]
+}
+
+@test "resolveSecretsBin: prefers explicit websites secrets binary" {
+  run_js "
+    import { resolveSecretsBin } from '$SCRIPTS_DIR/login.mjs';
+    console.log(resolveSecretsBin({ env: { WEBSITES_SECRETS_BIN: '/opt/secrets/bin/secrets' } }));
+  "
+  [ "$output" = "/opt/secrets/bin/secrets" ]
+}
+
+@test "resolveSecretsBin: resolves declared shiv secrets install through mise" {
+  run_js "
+    import { resolveSecretsBin } from '$SCRIPTS_DIR/login.mjs';
+    const calls = [];
+    const bin = resolveSecretsBin({
+      env: { MISE_CONFIG_ROOT: '/repo' },
+      execFile: (cmd, args) => {
+        calls.push([cmd, ...args].join(' '));
+        return '/mise/installs/shiv-secrets/0.2.0\\n';
+      }
+    });
+    console.log(bin);
+    console.log(calls[0]);
+  "
+  [ "$(echo "$output" | sed -n '1p')" = "/mise/installs/shiv-secrets/0.2.0/bin/secrets" ]
+  [ "$(echo "$output" | sed -n '2p')" = "mise -C /repo where shiv:secrets@0.2" ]
+}
+
+@test "resolveGitHubTotpCode: shells out to resolved secrets totp with agent key" {
+  run_js "
+    import { resolveGitHubTotpCode } from '$SCRIPTS_DIR/login.mjs';
+    const calls = [];
+    const code = resolveGitHubTotpCode('zeke', {
+      env: { WEBSITES_SECRETS_BIN: '/opt/secrets/bin/secrets' },
+      execFile: (cmd, args) => {
+        calls.push([cmd, ...args].join(' '));
+        return '654321\\n';
+      }
+    });
+    console.log(code);
+    console.log(calls[0]);
+  "
+  [ "$(echo "$output" | sed -n '1p')" = "654321" ]
+  [ "$(echo "$output" | sed -n '2p')" = "/opt/secrets/bin/secrets totp zeke/github-totp" ]
+}
+
+@test "resolveGitHubTotpCode: fails closed on invalid generated code" {
+  run_js "
+    import { resolveGitHubTotpCode } from '$SCRIPTS_DIR/login.mjs';
+    try {
+      resolveGitHubTotpCode('zeke', { env: { GITHUB_TOTP_CODE: 'abc123' } });
+      console.log('no error');
+    } catch (error) {
+      console.log(error.message);
+    }
+  "
+  [[ "$output" == *"not a 6-8 digit value"* ]]
+}
+
+# --- GitHub two-factor enrollment helpers ---
+
+@test "extractTwoFactorSetupKey: extracts setup key without trailing prose" {
+  run_js "
+    import { extractTwoFactorSetupKey } from '$SCRIPTS_DIR/two-factor.mjs';
+    const text = 'Your two-factor secret JBSW Y3DP EHPK 3PXP to manually configure your authenticator app.';
+    console.log(extractTwoFactorSetupKey(text));
+  "
+  [ "$output" = "JBSWY3DPEHPK3PXP" ]
+}
+
+@test "extractTwoFactorSetupKey: returns null without a valid seed" {
+  run_js "
+    import { extractTwoFactorSetupKey } from '$SCRIPTS_DIR/two-factor.mjs';
+    console.log(extractTwoFactorSetupKey('Your two-factor secret not available yet'));
+  "
+  [ "$output" = "null" ]
+}
+
+@test "extractRecoveryCodesFromText: extracts unique recovery codes" {
+  run_js "
+    import { extractRecoveryCodesFromText } from '$SCRIPTS_DIR/two-factor.mjs';
+    const codes = extractRecoveryCodesFromText('save a1b2c-3d4e5 and f6g7h-8i9j0 and a1b2c-3d4e5');
+    console.log(JSON.stringify(codes));
+  "
+  [ "$output" = '["a1b2c-3d4e5","f6g7h-8i9j0"]' ]
+}
+
+@test "sanitizeTwoFactorText: redacts setup and recovery secrets" {
+  run_js "
+    import { sanitizeTwoFactorText } from '$SCRIPTS_DIR/two-factor.mjs';
+    console.log(sanitizeTwoFactorText('seed JBSWY3DPEHPK3PXP recovery a1b2c-3d4e5 token github_pat_abc123'));
+  "
+  [[ "$output" == *"[BASE32]"* ]]
+  [[ "$output" == *"[RECOVERY_CODE]"* ]]
+  [[ "$output" == *"[GITHUB_TOKEN]"* ]]
+  [[ "$output" != *"JBSWY3DPEHPK3PXP"* ]]
+  [[ "$output" != *"a1b2c-3d4e5"* ]]
+}
+
 # --- parseEmailId ---
 
 @test "parseEmailId: extracts ID from table line" {
@@ -155,6 +304,14 @@ run_js() {
   [ "$output" = "ghp_oldtoken123" ]
 }
 
+@test "parseTokenFromText: extracts github_pat tokens" {
+  run_js "
+    import { parseTokenFromText } from '$SCRIPTS_DIR/token-rotate.mjs';
+    console.log(parseTokenFromText('Your token is github_pat_11ABC_def456'));
+  "
+  [ "$output" = "github_pat_11ABC_def456" ]
+}
+
 # --- findClassicTokenByName ---
 
 @test "findClassicTokenByName: requires exact token name match" {
@@ -173,6 +330,24 @@ run_js() {
     console.log(findClassicTokenByName(tokens, 'or'));
   "
   [ "$output" = "null" ]
+}
+
+# --- token creation helpers ---
+
+@test "tokenCreationUrl: preselects description and scopes" {
+  run_js "
+    import { tokenCreationUrl } from '$SCRIPTS_DIR/token-create.mjs';
+    const url = new URL(tokenCreationUrl('c0da'));
+    console.log(url.pathname);
+    console.log(url.searchParams.get('description'));
+    console.log(url.searchParams.get('scopes').includes('repo'));
+    console.log(url.searchParams.get('scopes').includes('workflow'));
+  "
+  [ "$status" -eq 0 ]
+  [ "$(echo "$output" | sed -n '1p')" = "/settings/tokens/new" ]
+  [ "$(echo "$output" | sed -n '2p')" = "c0da" ]
+  [ "$(echo "$output" | sed -n '3p')" = "true" ]
+  [ "$(echo "$output" | sed -n '4p')" = "true" ]
 }
 
 # --- parseTokenId ---

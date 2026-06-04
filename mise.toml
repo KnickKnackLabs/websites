@@ -1,3 +1,6 @@
+[plugins]
+shiv = "https://github.com/KnickKnackLabs/vfox-shiv"
+
 [tools]
 usage = "latest"
 jq = "latest"
@@ -5,3 +8,4 @@ gum = "latest"
 node = "latest"
 bun = "latest"
 bats = "1.13.0"
+"shiv:secrets" = "0.2"

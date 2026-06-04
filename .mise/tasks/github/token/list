@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 #MISE description="List visible GitHub classic PAT names"
-#USAGE flag "--login-id <id>" help="Identity used for email verification polling"
-#USAGE flag "--json" help="Output raw JSON instead of a table"
-#USAGE flag "--record" help="Record page artifacts for test fixtures"
+#USAGE flag "--login-id <id>" default="" help="Identity used for email verification polling/TOTP lookup"
+#USAGE flag "--json" default=#false help="Output raw JSON instead of a table"
+#USAGE flag "--record" default=#false help="Record page artifacts for test fixtures"
 
 set -euo pipefail
 

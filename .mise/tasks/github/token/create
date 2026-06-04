@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-#MISE description="Regenerate a GitHub classic PAT by name"
-#USAGE arg "<name>" help="Name of the token to regenerate"
+#MISE description="Create a GitHub classic PAT by name"
+#USAGE arg "<name>" help="Name of the token to create"
 #USAGE flag "--login-id <id>" default="" help="Identity used for email verification polling/TOTP lookup"
 #USAGE flag "--record" default=#false help="Record page artifacts for test fixtures"
 
 set -euo pipefail
 
-TOKEN_NAME="${usage_name:?Usage: websites github:token:rotate <name>}"
+TOKEN_NAME="${usage_name:?Usage: websites github:token:create <name>}"
 LOGIN_ID="${usage_login_id:-${GIT_AUTHOR_NAME:-$TOKEN_NAME}}"
 PROJECT_DIR="${MISE_CONFIG_ROOT:?MISE_CONFIG_ROOT not set}"
 
@@ -15,7 +15,6 @@ if [ -z "${GITHUB_USERNAME:-}" ] || [ -z "${GITHUB_PASSWORD:-}" ]; then
   exit 1
 fi
 
-# --- Recording setup ---
 if [ "${usage_record:-false}" = "true" ]; then
   RECORD_DIR="$PROJECT_DIR/test/fixtures/$(date +%Y%m%d-%H%M%S)"
   export WEBSITES_RECORD_DIR="$RECORD_DIR"
@@ -23,20 +22,13 @@ if [ "${usage_record:-false}" = "true" ]; then
   echo "" >&2
 fi
 
-# --- Run the Patchright script ---
-OUTPUT=$(
-  browser run "$PROJECT_DIR/scripts/github/token-rotate.mjs" -- "$TOKEN_NAME" "$LOGIN_ID" \
-  2>&1
-) || {
+OUTPUT=$(browser run "$PROJECT_DIR/scripts/github/token-create.mjs" -- "$TOKEN_NAME" "$LOGIN_ID" 2>&1) || {
   echo "$OUTPUT" >&2
   exit 1
 }
 
 echo "$OUTPUT" | sed -E 's/^TOKEN:.*/TOKEN:[REDACTED_GITHUB_TOKEN]/' >&2
 
-# Extract and output just the token.
-# Use awk instead of a grep pipeline so pipefail doesn't bypass the explicit
-# validation/error message below when the browser script exits 0 without TOKEN:.
 NEW_TOKEN=$(echo "$OUTPUT" | awk -F'TOKEN:' '/^TOKEN:/ { value=$2 } END { print value }')
 
 if [ -z "$NEW_TOKEN" ] || ! echo "$NEW_TOKEN" | grep -Eq '^(gh[pousr]_|github_pat_)'; then
