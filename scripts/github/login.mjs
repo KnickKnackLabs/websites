@@ -7,8 +7,6 @@
 //   import { login } from './login.mjs';
 //   await login(page, { agent: 'x1f9', username, password });
 
-import { execFileSync } from 'node:child_process';
-
 import { pollForVerificationCode } from './email-code.mjs';
 import { record } from '../record.mjs';
 
@@ -31,10 +29,6 @@ export function classifyOtpChallenge({ url = '', text = '' } = {}) {
   return 'unknown';
 }
 
-export function githubTotpSecretKey(agent, env = process.env) {
-  return env.GITHUB_TOTP_SECRET_KEY || `${agent}/github-totp`;
-}
-
 export function normalizeTotpCode(value) {
   const code = String(value || '').trim();
   if (!/^\d{6,8}$/.test(code)) {
@@ -43,40 +37,12 @@ export function normalizeTotpCode(value) {
   return code;
 }
 
-export function resolveSecretsBin({ env = process.env, execFile = execFileSync } = {}) {
-  if (env.WEBSITES_SECRETS_BIN) return env.WEBSITES_SECRETS_BIN;
-
-  try {
-    const cwd = env.MISE_CONFIG_ROOT || process.cwd();
-    const installDir = String(execFile('mise', ['-C', cwd, 'where', 'shiv:secrets@0.2'], {
-      encoding: 'utf8',
-      env,
-      stdio: ['ignore', 'pipe', 'pipe'],
-    })).trim();
-    if (installDir) return `${installDir}/bin/secrets`;
-  } catch {
-    // Fall back to PATH below; callers still fail closed if it lacks totp.
-  }
-
-  return 'secrets';
-}
-
-export function resolveGitHubTotpCode(agent, { env = process.env, execFile = execFileSync } = {}) {
+export function resolveGitHubTotpCode(agent, { env = process.env } = {}) {
   if (env.GITHUB_TOTP_CODE) {
     return normalizeTotpCode(env.GITHUB_TOTP_CODE);
   }
 
-  const key = githubTotpSecretKey(agent, env);
-  const secretsBin = resolveSecretsBin({ env, execFile });
-  try {
-    return normalizeTotpCode(execFile(secretsBin, ['totp', key], {
-      encoding: 'utf8',
-      env,
-      stdio: ['ignore', 'pipe', 'pipe'],
-    }));
-  } catch (error) {
-    throw new Error(`GitHub two-factor authentication required, but ${key} could not produce a TOTP code via secrets totp.`);
-  }
+  throw new Error(`GitHub two-factor authentication required for ${agent}; set GITHUB_TOTP_CODE to a current code.`);
 }
 
 async function submitOtpCode(page, otpInput, code) {

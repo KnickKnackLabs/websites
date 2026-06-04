@@ -127,76 +127,27 @@ run_js() {
   [ "$output" = "device" ]
 }
 
-@test "githubTotpSecretKey: defaults to agent github-totp key" {
-  run_js "
-    import { githubTotpSecretKey } from '$SCRIPTS_DIR/login.mjs';
-    console.log(githubTotpSecretKey('zeke', {}));
-  "
-  [ "$output" = "zeke/github-totp" ]
-}
-
-@test "githubTotpSecretKey: allows explicit secret key override" {
-  run_js "
-    import { githubTotpSecretKey } from '$SCRIPTS_DIR/login.mjs';
-    console.log(githubTotpSecretKey('zeke', { GITHUB_TOTP_SECRET_KEY: 'custom/key' }));
-  "
-  [ "$output" = "custom/key" ]
-}
-
 @test "resolveGitHubTotpCode: prefers explicit one-time code env" {
   run_js "
     import { resolveGitHubTotpCode } from '$SCRIPTS_DIR/login.mjs';
-    const code = resolveGitHubTotpCode('zeke', {
-      env: { GITHUB_TOTP_CODE: '123456' },
-      execFile: () => { throw new Error('should not call secrets'); }
-    });
+    const code = resolveGitHubTotpCode('zeke', { env: { GITHUB_TOTP_CODE: '123456' } });
     console.log(code);
   "
   [ "$output" = "123456" ]
 }
 
-@test "resolveSecretsBin: prefers explicit websites secrets binary" {
-  run_js "
-    import { resolveSecretsBin } from '$SCRIPTS_DIR/login.mjs';
-    console.log(resolveSecretsBin({ env: { WEBSITES_SECRETS_BIN: '/opt/secrets/bin/secrets' } }));
-  "
-  [ "$output" = "/opt/secrets/bin/secrets" ]
-}
-
-@test "resolveSecretsBin: resolves declared shiv secrets install through mise" {
-  run_js "
-    import { resolveSecretsBin } from '$SCRIPTS_DIR/login.mjs';
-    const calls = [];
-    const bin = resolveSecretsBin({
-      env: { MISE_CONFIG_ROOT: '/repo' },
-      execFile: (cmd, args) => {
-        calls.push([cmd, ...args].join(' '));
-        return '/mise/installs/shiv-secrets/0.2.0\\n';
-      }
-    });
-    console.log(bin);
-    console.log(calls[0]);
-  "
-  [ "$(echo "$output" | sed -n '1p')" = "/mise/installs/shiv-secrets/0.2.0/bin/secrets" ]
-  [ "$(echo "$output" | sed -n '2p')" = "mise -C /repo where shiv:secrets@0.2" ]
-}
-
-@test "resolveGitHubTotpCode: shells out to resolved secrets totp with agent key" {
+@test "resolveGitHubTotpCode: requires caller-injected code" {
   run_js "
     import { resolveGitHubTotpCode } from '$SCRIPTS_DIR/login.mjs';
-    const calls = [];
-    const code = resolveGitHubTotpCode('zeke', {
-      env: { WEBSITES_SECRETS_BIN: '/opt/secrets/bin/secrets' },
-      execFile: (cmd, args) => {
-        calls.push([cmd, ...args].join(' '));
-        return '654321\\n';
-      }
-    });
-    console.log(code);
-    console.log(calls[0]);
+    try {
+      resolveGitHubTotpCode('zeke', { env: {} });
+      console.log('no error');
+    } catch (error) {
+      console.log(error.message);
+    }
   "
-  [ "$(echo "$output" | sed -n '1p')" = "654321" ]
-  [ "$(echo "$output" | sed -n '2p')" = "/opt/secrets/bin/secrets totp zeke/github-totp" ]
+  [[ "$output" == *"set GITHUB_TOTP_CODE"* ]]
+  [[ "$output" != *"secrets"* ]]
 }
 
 @test "resolveGitHubTotpCode: fails closed on invalid generated code" {
@@ -240,6 +191,14 @@ run_js() {
   [ "$output" = '["a1b2c-3d4e5","f6g7h-8i9j0"]' ]
 }
 
+@test "generateTotpCode: matches RFC 6238 SHA1 test vector" {
+  run_js "
+    import { generateTotpCode } from '$SCRIPTS_DIR/two-factor.mjs';
+    console.log(generateTotpCode('GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ', { now: 59000, digits: 8 }));
+  "
+  [ "$output" = "94287082" ]
+}
+
 @test "sanitizeTwoFactorText: redacts setup and recovery secrets" {
   run_js "
     import { sanitizeTwoFactorText } from '$SCRIPTS_DIR/two-factor.mjs';
@@ -250,6 +209,105 @@ run_js() {
   [[ "$output" == *"[GITHUB_TOKEN]"* ]]
   [[ "$output" != *"JBSWY3DPEHPK3PXP"* ]]
   [[ "$output" != *"a1b2c-3d4e5"* ]]
+}
+
+@test "reserveEnrollmentOutput: claims output path before browser mutations" {
+  out="$BATS_TEST_TMPDIR/enrollment.json"
+  run_js "
+    import { existsSync, statSync } from 'node:fs';
+    import { reserveEnrollmentOutput } from '$SCRIPTS_DIR/two-factor.mjs';
+    const output = reserveEnrollmentOutput('$out');
+    console.log(existsSync('$out'));
+    console.log((statSync('$out').mode & 0o777).toString(8));
+    output.write({ status: 'enrolled', totp_seed: 'JBSWY3DPEHPK3PXP', recovery_codes: ['a1b2c-3d4e5'] });
+    console.log(statSync('$out').size > 0);
+    try {
+      reserveEnrollmentOutput('$out');
+      console.log('no error');
+    } catch (error) {
+      console.log(error.code);
+    }
+  "
+  [ "$(echo "$output" | sed -n '1p')" = "true" ]
+  [ "$(echo "$output" | sed -n '2p')" = "600" ]
+  [ "$(echo "$output" | sed -n '3p')" = "true" ]
+  [ "$(echo "$output" | sed -n '4p')" = "EEXIST" ]
+}
+
+@test "reserveEnrollmentOutput: removes empty reservation after failed enrollment" {
+  out="$BATS_TEST_TMPDIR/enrollment.json"
+  run_js "
+    import { existsSync } from 'node:fs';
+    import { reserveEnrollmentOutput } from '$SCRIPTS_DIR/two-factor.mjs';
+    const output = reserveEnrollmentOutput('$out');
+    console.log(existsSync('$out'));
+    output.discard();
+    console.log(existsSync('$out'));
+  "
+  [ "$(echo "$output" | sed -n '1p')" = "true" ]
+  [ "$(echo "$output" | sed -n '2p')" = "false" ]
+}
+
+@test "enrollTwoFactor: reserves outputPath before page inspection" {
+  out="$BATS_TEST_TMPDIR/enrollment.json"
+  run_js "
+    import { existsSync, readFileSync } from 'node:fs';
+    import { enrollTwoFactor } from '$SCRIPTS_DIR/two-factor.mjs';
+    let sawFirstPageProbe = false;
+    const page = {
+      textContent: async () => '',
+      locator: () => ({
+        first: () => ({
+          isVisible: async () => {
+            if (!sawFirstPageProbe) {
+              console.log(existsSync('$out'));
+              sawFirstPageProbe = true;
+            }
+            return false;
+          },
+        }),
+        evaluateAll: async () => [],
+        allTextContents: async () => [],
+      }),
+    };
+    const result = await enrollTwoFactor(page, { outputPath: '$out', entrypoint: 'current' });
+    console.log(result.status);
+    console.log(JSON.parse(readFileSync('$out', 'utf8')).status);
+  "
+  [ "$(echo "$output" | sed -n '1p')" = "true" ]
+  [ "$(echo "$output" | tail -2 | sed -n '1p')" = "not_available" ]
+  [ "$(echo "$output" | tail -1)" = "not_available" ]
+}
+
+@test "normalizeTwoFactorEntrypoint: defaults and validates values" {
+  run_js "
+    import { normalizeTwoFactorEntrypoint } from '$SCRIPTS_DIR/two-factor.mjs';
+    console.log(normalizeTwoFactorEntrypoint(''));
+    console.log(normalizeTwoFactorEntrypoint('SETTINGS'));
+    try {
+      normalizeTwoFactorEntrypoint('mystery');
+      console.log('no error');
+    } catch (error) {
+      console.log(error.message);
+    }
+  "
+  [ "$(echo "$output" | sed -n '1p')" = "auto" ]
+  [ "$(echo "$output" | sed -n '2p')" = "settings" ]
+  [[ "$(echo "$output" | sed -n '3p')" == *"auto, settings, token"* ]]
+}
+
+@test "classifyTwoFactorSettingsText: distinguishes enabled from available setup" {
+  run_js "
+    import { classifyTwoFactorSettingsText } from '$SCRIPTS_DIR/two-factor.mjs';
+    console.log(classifyTwoFactorSettingsText('Two-factor authentication is enabled. View recovery codes.'));
+    console.log(classifyTwoFactorSettingsText('Protect your account. Enable two-factor authentication.'));
+    console.log(classifyTwoFactorSettingsText('Recovery codes Two-factor authentication is not enabled yet. Enable two-factor authentication.'));
+    console.log(classifyTwoFactorSettingsText('Password and authentication'));
+  "
+  [ "$(echo "$output" | sed -n '1p')" = "enabled" ]
+  [ "$(echo "$output" | sed -n '2p')" = "available" ]
+  [ "$(echo "$output" | sed -n '3p')" = "available" ]
+  [ "$(echo "$output" | sed -n '4p')" = "unknown" ]
 }
 
 # --- parseEmailId ---
