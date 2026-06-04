@@ -42,6 +42,16 @@ websites() {
   [[ "$output" == *"--json"* ]]
 }
 
+@test "buttondown:api:emails:send help exposes live-send confirmation flag" {
+  run websites buttondown:api:emails:send --help
+
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"--id <id>"* ]]
+  [[ "$output" == *"--i-understand-this-sends-to-subscribers"* ]]
+  [[ "$output" == *"--dry-run"* ]]
+  [[ "$output" == *"--json"* ]]
+}
+
 @test "buttondown:api tasks print concise errors for operator failures" {
   run env -u BUTTONDOWN_API_KEY bash -c 'cd "$REPO_DIR" && mise run -q buttondown:api:newsletters'
 
@@ -96,6 +106,23 @@ EOF
   echo "$output" | jq -e '.dry_run == true' >/dev/null
   echo "$output" | jq -e '.id == "email_123"' >/dev/null
   echo "$output" | jq -e '.payload.body | startswith("<!-- buttondown-editor-mode: plaintext -->")' >/dev/null
+}
+
+@test "buttondown:api:emails:send dry-run reports live-send transition without API key" {
+  run env -u BUTTONDOWN_API_KEY bash -c 'cd "$REPO_DIR" && mise run -q buttondown:api:emails:send --id email_123 --dry-run --json'
+
+  [ "$status" -eq 0 ]
+  echo "$output" | jq -e '.dry_run == true' >/dev/null
+  echo "$output" | jq -e '.id == "email_123"' >/dev/null
+  echo "$output" | jq -e '.status == "about_to_send"' >/dev/null
+}
+
+@test "buttondown:api:emails:send requires explicit live-send confirmation before API key" {
+  run env -u BUTTONDOWN_API_KEY bash -c 'cd "$REPO_DIR" && mise run -q buttondown:api:emails:send --id email_123'
+
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"ERROR: --i-understand-this-sends-to-subscribers is required"* ]]
+  [[ "$output" != *"BUTTONDOWN_API_KEY"* ]]
 }
 
 @test "buttondown:api:emails:send-draft dry-run reports count without recipient addresses" {
@@ -252,6 +279,26 @@ EOF
   echo "$output" | jq -e '.output.body == null' >/dev/null
   echo "$output" | jq -e '.calls[0].path == "/emails/email_123"' >/dev/null
   echo "$output" | jq -e '.calls[0].body.body == "<!-- buttondown-editor-mode: plaintext -->\nBody"' >/dev/null
+}
+
+@test "sendEmail: patches draft status to about_to_send" {
+  run_js "
+    import { sendEmail } from '$SCRIPTS_DIR/api.mjs';
+    const calls = [];
+    const patch = async (path, body) => {
+      calls.push({ path, body });
+      return { id: 'email_123', subject: 'Hello', status: body.status, body: 'secret' };
+    };
+    const output = await sendEmail('email_123', { patch });
+    console.log(JSON.stringify({ output, calls }));
+  "
+
+  [ "$status" -eq 0 ]
+  echo "$output" | jq -e '.output.id == "email_123"' >/dev/null
+  echo "$output" | jq -e '.output.status == "about_to_send"' >/dev/null
+  echo "$output" | jq -e '.output.body == null' >/dev/null
+  echo "$output" | jq -e '.calls[0].path == "/emails/email_123"' >/dev/null
+  echo "$output" | jq -e '.calls[0].body.status == "about_to_send"' >/dev/null
 }
 
 @test "sendDraftEmail: posts recipients to Buttondown draft endpoint" {

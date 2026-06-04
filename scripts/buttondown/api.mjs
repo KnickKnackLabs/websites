@@ -374,6 +374,12 @@ export async function sendDraftEmail(id, recipients, { post = apiPost } = {}) {
   };
 }
 
+export async function sendEmail(id, { patch = apiPatch } = {}) {
+  if (!id) throw new Error('Email ID is required');
+  const email = await patch(`/emails/${encodeURIComponent(id)}`, { status: 'about_to_send' });
+  return sanitizeEmailPayload(email);
+}
+
 export async function runResource(resource, options, { get = apiGet } = {}) {
   switch (resource) {
     case 'newsletters': {
