@@ -1,0 +1,57 @@
+#!/usr/bin/env bun
+//MISE description="Send a Buttondown draft email to subscribers"
+//USAGE flag "--id <id>" default="" help="Buttondown email ID"
+//USAGE flag "--i-understand-this-sends-to-subscribers" default=#false help="Required confirmation for live subscriber sends"
+//USAGE flag "--dry-run" default=#false help="Print the send request without calling Buttondown"
+//USAGE flag "--json" default=#false help="Print machine-readable JSON"
+
+import { sendEmail } from '../../../../../scripts/buttondown/api.mjs';
+import { optionalUsageEnv, printTask, usageFlag } from '../../../../../scripts/buttondown/task.mjs';
+
+function emailId(): string {
+  const id = optionalUsageEnv('id');
+  if (!id) throw new Error('--id is required');
+  return id;
+}
+
+function assertLiveSendConfirmed() {
+  if (!usageFlag('i_understand_this_sends_to_subscribers')) {
+    throw new Error('--i-understand-this-sends-to-subscribers is required for live sends');
+  }
+}
+
+function formatSend(output: Record<string, unknown>): string {
+  if (output.dry_run === true) {
+    return [
+      'Dry run: would submit Buttondown email send to subscribers',
+      `id: ${output.id}`,
+      `status: ${output.status}`,
+    ].join('\n');
+  }
+
+  return [
+    'Submitted Buttondown email send to subscribers',
+    `id: ${output.id}`,
+    `subject: ${output.subject}`,
+    `status: ${output.status}`,
+    output.absolute_url ? `url: ${output.absolute_url}` : undefined,
+  ].filter(Boolean).join('\n');
+}
+
+await printTask(async () => {
+  const id = emailId();
+  if (usageFlag('dry_run')) {
+    return {
+      dry_run: true,
+      action: 'send',
+      id,
+      status: 'about_to_send',
+    };
+  }
+
+  assertLiveSendConfirmed();
+  return sendEmail(id);
+}, {
+  json: usageFlag('json'),
+  human: formatSend,
+});

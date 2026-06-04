@@ -1,0 +1,74 @@
+#!/usr/bin/env bun
+//MISE description="Create a Buttondown email draft from a file-backed body"
+//USAGE flag "--subject <subject>" default="" help="Email subject"
+//USAGE flag "--body-file <body_file>" default="" help="Markdown/HTML body file, or - for stdin"
+//USAGE flag "--canonical-url <canonical_url>" default="" help="Canonical source URL"
+//USAGE flag "--description <description>" default="" help="Archive/SEO description"
+//USAGE flag "--slug <slug>" default="" help="Email archive slug"
+//USAGE flag "--image <image>" default="" help="Primary preview image URL"
+//USAGE flag "--editor-mode <editor_mode>" default="plaintext" help="Buttondown editor mode: plaintext, fancy, or auto"
+//USAGE flag "--dry-run" default=#false help="Print the payload without calling Buttondown"
+//USAGE flag "--json" default=#false help="Print machine-readable JSON"
+
+import { buildEmailCreatePayload, createEmailDraft } from '../../../../../scripts/buttondown/api.mjs';
+import { optionalUsageEnv, printTask, readTextPayload, usageFlag } from '../../../../../scripts/buttondown/task.mjs';
+
+type CreateOptions = {
+  subject?: string;
+  body: string;
+  canonicalUrl?: string;
+  description?: string;
+  slug?: string;
+  image?: string;
+  editorMode: string;
+};
+
+function createOptions(): CreateOptions {
+  const bodyFile = optionalUsageEnv('body_file');
+  if (!bodyFile) throw new Error('--body-file is required');
+
+  return {
+    subject: optionalUsageEnv('subject'),
+    body: readTextPayload(bodyFile),
+    canonicalUrl: optionalUsageEnv('canonical_url'),
+    description: optionalUsageEnv('description'),
+    slug: optionalUsageEnv('slug'),
+    image: optionalUsageEnv('image'),
+    editorMode: process.env.usage_editor_mode ?? 'plaintext',
+  };
+}
+
+function formatCreateDraft(email: Record<string, unknown>): string {
+  if (email.dry_run === true) {
+    const payload = email.payload as Record<string, unknown>;
+    return [
+      'Dry run: would create Buttondown draft',
+      `subject: ${payload.subject}`,
+      `status: ${payload.status}`,
+      payload.canonical_url ? `canonical_url: ${payload.canonical_url}` : undefined,
+      `body_bytes: ${String(payload.body ?? '').length}`,
+    ].filter(Boolean).join('\n');
+  }
+
+  return [
+    'Created Buttondown draft',
+    `id: ${email.id}`,
+    `subject: ${email.subject}`,
+    `status: ${email.status}`,
+    email.absolute_url ? `url: ${email.absolute_url}` : undefined,
+  ].filter(Boolean).join('\n');
+}
+
+await printTask(async () => {
+  const options = createOptions();
+  if (usageFlag('dry_run')) {
+    return {
+      dry_run: true,
+      payload: buildEmailCreatePayload(options),
+    };
+  }
+  return createEmailDraft(options);
+}, {
+  json: usageFlag('json'),
+  human: formatCreateDraft,
+});

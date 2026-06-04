@@ -1,0 +1,82 @@
+#!/usr/bin/env bun
+//MISE description="Update a Buttondown email draft from file-backed fields"
+//USAGE flag "--id <id>" default="" help="Buttondown email ID"
+//USAGE flag "--subject <subject>" default="" help="Email subject"
+//USAGE flag "--body-file <body_file>" default="" help="Markdown/HTML body file, or - for stdin"
+//USAGE flag "--canonical-url <canonical_url>" default="" help="Canonical source URL"
+//USAGE flag "--description <description>" default="" help="Archive/SEO description"
+//USAGE flag "--slug <slug>" default="" help="Email archive slug"
+//USAGE flag "--image <image>" default="" help="Primary preview image URL"
+//USAGE flag "--editor-mode <editor_mode>" default="plaintext" help="Buttondown editor mode: plaintext, fancy, or auto"
+//USAGE flag "--dry-run" default=#false help="Print the payload without calling Buttondown"
+//USAGE flag "--json" default=#false help="Print machine-readable JSON"
+
+import { buildEmailUpdatePayload, updateEmail } from '../../../../../scripts/buttondown/api.mjs';
+import { optionalUsageEnv, printTask, readTextPayload, usageFlag } from '../../../../../scripts/buttondown/task.mjs';
+
+type UpdateOptions = {
+  subject?: string;
+  body?: string;
+  canonicalUrl?: string;
+  description?: string;
+  slug?: string;
+  image?: string;
+  editorMode: string;
+};
+
+function emailId(): string {
+  const id = optionalUsageEnv('id');
+  if (!id) throw new Error('--id is required');
+  return id;
+}
+
+function updateOptions(): UpdateOptions {
+  const bodyFile = optionalUsageEnv('body_file');
+  return {
+    subject: optionalUsageEnv('subject'),
+    body: bodyFile ? readTextPayload(bodyFile) : undefined,
+    canonicalUrl: optionalUsageEnv('canonical_url'),
+    description: optionalUsageEnv('description'),
+    slug: optionalUsageEnv('slug'),
+    image: optionalUsageEnv('image'),
+    editorMode: process.env.usage_editor_mode ?? 'plaintext',
+  };
+}
+
+function formatUpdateDraft(email: Record<string, unknown>): string {
+  if (email.dry_run === true) {
+    const payload = email.payload as Record<string, unknown>;
+    return [
+      'Dry run: would update Buttondown email',
+      `id: ${email.id}`,
+      payload.subject ? `subject: ${payload.subject}` : undefined,
+      payload.status ? `status: ${payload.status}` : undefined,
+      payload.canonical_url ? `canonical_url: ${payload.canonical_url}` : undefined,
+      payload.body ? `body_bytes: ${String(payload.body).length}` : undefined,
+    ].filter(Boolean).join('\n');
+  }
+
+  return [
+    'Updated Buttondown email',
+    `id: ${email.id}`,
+    `subject: ${email.subject}`,
+    `status: ${email.status}`,
+    email.absolute_url ? `url: ${email.absolute_url}` : undefined,
+  ].filter(Boolean).join('\n');
+}
+
+await printTask(async () => {
+  const id = emailId();
+  const options = updateOptions();
+  if (usageFlag('dry_run')) {
+    return {
+      dry_run: true,
+      id,
+      payload: buildEmailUpdatePayload(options),
+    };
+  }
+  return updateEmail(id, options);
+}, {
+  json: usageFlag('json'),
+  human: formatUpdateDraft,
+});
