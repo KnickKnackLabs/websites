@@ -248,6 +248,37 @@ run_js() {
   [ "$(echo "$output" | sed -n '2p')" = "false" ]
 }
 
+@test "enrollTwoFactor: reserves outputPath before page inspection" {
+  out="$BATS_TEST_TMPDIR/enrollment.json"
+  run_js "
+    import { existsSync, readFileSync } from 'node:fs';
+    import { enrollTwoFactor } from '$SCRIPTS_DIR/two-factor.mjs';
+    let sawFirstPageProbe = false;
+    const page = {
+      textContent: async () => '',
+      locator: () => ({
+        first: () => ({
+          isVisible: async () => {
+            if (!sawFirstPageProbe) {
+              console.log(existsSync('$out'));
+              sawFirstPageProbe = true;
+            }
+            return false;
+          },
+        }),
+        evaluateAll: async () => [],
+        allTextContents: async () => [],
+      }),
+    };
+    const result = await enrollTwoFactor(page, { outputPath: '$out', entrypoint: 'current' });
+    console.log(result.status);
+    console.log(JSON.parse(readFileSync('$out', 'utf8')).status);
+  "
+  [ "$(echo "$output" | sed -n '1p')" = "true" ]
+  [ "$(echo "$output" | tail -2 | sed -n '1p')" = "not_available" ]
+  [ "$(echo "$output" | tail -1)" = "not_available" ]
+}
+
 @test "normalizeTwoFactorEntrypoint: defaults and validates values" {
   run_js "
     import { normalizeTwoFactorEntrypoint } from '$SCRIPTS_DIR/two-factor.mjs';
