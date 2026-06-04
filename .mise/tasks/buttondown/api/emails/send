@@ -23,14 +23,14 @@ function assertLiveSendConfirmed() {
 function formatSend(output: Record<string, unknown>): string {
   if (output.dry_run === true) {
     return [
-      'Dry run: would send Buttondown email to subscribers',
+      'Dry run: would submit Buttondown email send to subscribers',
       `id: ${output.id}`,
       `status: ${output.status}`,
     ].join('\n');
   }
 
   return [
-    'Sent Buttondown email to subscribers',
+    'Submitted Buttondown email send to subscribers',
     `id: ${output.id}`,
     `subject: ${output.subject}`,
     `status: ${output.status}`,
