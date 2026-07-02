@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+#MISE description="Print non-mutating safe diagnostics for GitHub token pages"
+#USAGE arg "[mode]" default="create" help="Page to inspect: create, list, or regenerate"
+#USAGE arg "[name]" default="diagnostic-token" help="Token name for create defaults or regenerate lookup"
+#USAGE flag "--login-id <id>" default="" help="Identity used for email verification polling/TOTP lookup"
+
+set -euo pipefail
+
+MODE="${usage_mode:-create}"
+TOKEN_NAME="${usage_name:-diagnostic-token}"
+LOGIN_ID="${usage_login_id:-${GIT_AUTHOR_NAME:-$TOKEN_NAME}}"
+PROJECT_DIR="${MISE_CONFIG_ROOT:?MISE_CONFIG_ROOT not set}"
+
+if [ -z "${GITHUB_USERNAME:-}" ] || [ -z "${GITHUB_PASSWORD:-}" ]; then
+  echo "ERROR: GITHUB_USERNAME and GITHUB_PASSWORD env vars required." >&2
+  exit 1
+fi
+
+browser run "$PROJECT_DIR/scripts/github/token-diagnose.mjs" -- "$MODE" "$TOKEN_NAME" "$LOGIN_ID"

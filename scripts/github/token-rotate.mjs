@@ -9,6 +9,8 @@
 import { login, resolveGitHubTotpCode } from './login.mjs';
 import { openGitHubSensitivePage } from './sensitive-page-gate.mjs';
 import { record } from '../record.mjs';
+import { logSafePageFacts } from './page-diagnostics.mjs';
+import { TOKEN_DISPLAY_SELECTOR, waitForGitHubToken } from './token-capture.mjs';
 import {
   findClassicTokenByName,
   isGitHubToken,
@@ -54,6 +56,7 @@ export default async function({ page, args }) {
     .catch(() => false);
   if (loginFormStillVisible) {
     console.error(`Not authenticated after login; redirected to ${page.url()}`);
+    await logSafePageFacts(page, 'Safe page facts after failed authentication');
     process.exit(1);
   }
 
@@ -66,6 +69,7 @@ export default async function({ page, args }) {
     for (const visibleToken of tokens) {
       console.error(`  - ${visibleToken.id}\t${visibleToken.name}`);
     }
+    await logSafePageFacts(page, 'Safe page facts for missing token');
     process.exit(1);
   }
 
@@ -96,43 +100,30 @@ export default async function({ page, args }) {
 
   // Click "Regenerate token"
   const regenerateBtn = page.locator('button:has-text("Regenerate token"), input[value*="Regenerate"]').first();
-  await regenerateBtn.waitFor({ state: 'visible', timeout: 5000 });
+  try {
+    await regenerateBtn.waitFor({ state: 'visible', timeout: 5000 });
+  } catch (error) {
+    console.error('Could not find visible Regenerate token button.');
+    await logSafePageFacts(page, 'Safe page facts for missing regenerate button');
+    throw error;
+  }
   await regenerateBtn.click();
 
   // Wait for the new token to appear (wait for the token display element instead of a fixed sleep)
   await page.waitForLoadState('domcontentloaded');
-  const tokenDisplayLocator = page.locator('input#new-oauth-token, [data-clipboard-text^="ghp_"], [data-clipboard-text^="github_pat_"]').first();
+  const tokenDisplayLocator = page.locator(TOKEN_DISPLAY_SELECTOR).first();
   await tokenDisplayLocator.waitFor({ state: 'visible', timeout: 15000 }).catch(() => {
     console.error('Warning: token display element not found within timeout, will try fallback methods.');
   });
   record(`regenerated-page-${loginId}.html`, await page.content());
 
   // --- Capture the new token ---
-  let newToken = null;
-
-  // Method 1: input#new-oauth-token (GitHub's token display input)
-  const tokenInput = page.locator('input#new-oauth-token');
-  if (await tokenInput.isVisible({ timeout: 3000 }).catch(() => false)) {
-    newToken = await tokenInput.getAttribute('value');
-  }
-
-  // Method 2: data-clipboard-text attribute (GitHub's copy button)
-  if (!newToken) {
-    const clipboardEl = page.locator('[data-clipboard-text^="ghp_"], [data-clipboard-text^="github_pat_"]').first();
-    if (await clipboardEl.isVisible({ timeout: 3000 }).catch(() => false)) {
-      newToken = await clipboardEl.getAttribute('data-clipboard-text');
-    }
-  }
-
-  // Method 3: search full page text
-  if (!newToken) {
-    const pageText = await page.textContent('body');
-    newToken = parseTokenFromText(pageText);
-  }
+  const newToken = await waitForGitHubToken(page, { timeoutMs: 3000 });
 
   if (!isGitHubToken(newToken)) {
     console.error('Could not capture new token from page.');
     console.error('The token may have been regenerated — check the browser window.');
+    await logSafePageFacts(page, 'Safe page facts after token capture failure');
     process.exit(1);
   }
 

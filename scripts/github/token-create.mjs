@@ -9,7 +9,9 @@
 import { login, resolveGitHubTotpCode } from './login.mjs';
 import { openGitHubSensitivePage } from './sensitive-page-gate.mjs';
 import { record } from '../record.mjs';
-import { isGitHubToken, parseTokenFromText } from './tokens.mjs';
+import { captureGitHubTokenFromPage, TOKEN_DISPLAY_SELECTOR, waitForGitHubToken } from './token-capture.mjs';
+import { logSafePageFacts } from './page-diagnostics.mjs';
+import { isGitHubToken } from './tokens.mjs';
 
 const FULL_ACCESS_SCOPES = [
   'repo',
@@ -47,22 +49,7 @@ async function fillIfVisible(locator, value) {
   return false;
 }
 
-async function captureToken(page) {
-  const tokenInput = page.locator('input#new-oauth-token');
-  if (await tokenInput.isVisible({ timeout: 3000 }).catch(() => false)) {
-    const value = await tokenInput.getAttribute('value');
-    if (value) return value;
-  }
-
-  const clipboardEl = page.locator('[data-clipboard-text^="ghp_"], [data-clipboard-text^="github_pat_"]').first();
-  if (await clipboardEl.isVisible({ timeout: 3000 }).catch(() => false)) {
-    const value = await clipboardEl.getAttribute('data-clipboard-text');
-    if (value) return value;
-  }
-
-  const pageText = await page.textContent('body');
-  return parseTokenFromText(pageText || '');
-}
+const captureToken = captureGitHubTokenFromPage;
 
 export { FULL_ACCESS_SCOPES, tokenCreationUrl, captureToken };
 
@@ -95,6 +82,7 @@ export default async function({ page, args }) {
     .catch(() => false);
   if (loginFormStillVisible) {
     console.error(`Not authenticated after login; redirected to ${page.url()}`);
+    await logSafePageFacts(page, 'Safe page facts after failed authentication');
     process.exit(1);
   }
 
@@ -118,20 +106,27 @@ export default async function({ page, args }) {
   }
 
   const createButton = page.locator('button:has-text("Generate token"), input[value*="Generate token"]').first();
-  await createButton.waitFor({ state: 'visible', timeout: 5000 });
+  try {
+    await createButton.waitFor({ state: 'visible', timeout: 5000 });
+  } catch (error) {
+    console.error('Could not find visible Generate token button.');
+    await logSafePageFacts(page, 'Safe page facts for missing create button');
+    throw error;
+  }
   await createButton.click();
 
   await page.waitForLoadState('domcontentloaded');
-  const tokenDisplayLocator = page.locator('input#new-oauth-token, [data-clipboard-text^="ghp_"], [data-clipboard-text^="github_pat_"]').first();
+  const tokenDisplayLocator = page.locator(TOKEN_DISPLAY_SELECTOR).first();
   await tokenDisplayLocator.waitFor({ state: 'visible', timeout: 15000 }).catch(() => {
     console.error('Warning: token display element not found within timeout, will try fallback methods.');
   });
   record(`token-created-page-${loginId}.html`, await page.content());
 
-  const newToken = await captureToken(page);
+  const newToken = await waitForGitHubToken(page, { timeoutMs: 3000 });
   if (!isGitHubToken(newToken)) {
     console.error('Could not capture new token from page.');
     console.error('The token may have been created — check the browser window.');
+    await logSafePageFacts(page, 'Safe page facts after token capture failure');
     process.exit(1);
   }
 
