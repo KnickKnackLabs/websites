@@ -7,6 +7,7 @@
 //   import { login } from './login.mjs';
 //   await login(page, { agent: 'x1f9', username, password });
 
+import { execFileSync } from 'node:child_process';
 import { pollForVerificationCode } from './email-code.mjs';
 import { record } from '../record.mjs';
 
@@ -37,12 +38,24 @@ export function normalizeTotpCode(value) {
   return code;
 }
 
-export function resolveGitHubTotpCode(agent, { env = process.env } = {}) {
+export function resolveGitHubTotpCode(agent, { env = process.env, execFile = execFileSync } = {}) {
+  if (env.GITHUB_TOTP_COMMAND) {
+    try {
+      const output = execFile('bash', ['-lc', env.GITHUB_TOTP_COMMAND], {
+        encoding: 'utf8',
+        env,
+      });
+      return normalizeTotpCode(output);
+    } catch {
+      throw new Error(`GitHub two-factor authentication command failed for ${agent}.`);
+    }
+  }
+
   if (env.GITHUB_TOTP_CODE) {
     return normalizeTotpCode(env.GITHUB_TOTP_CODE);
   }
 
-  throw new Error(`GitHub two-factor authentication required for ${agent}; set GITHUB_TOTP_CODE to a current code.`);
+  throw new Error(`GitHub two-factor authentication required for ${agent}; set GITHUB_TOTP_CODE or GITHUB_TOTP_COMMAND to a current code source.`);
 }
 
 async function submitOtpCode(page, otpInput, code) {
@@ -65,6 +78,7 @@ async function submitOtpCode(page, otpInput, code) {
 // Throws on failure.
 export async function login(page, { agent, username, password }) {
   console.log(`Logging in as ${username}...`);
+  let loginTotpCode = null;
 
   await page.goto('https://github.com/login');
   await page.waitForLoadState('domcontentloaded');
@@ -89,7 +103,8 @@ export async function login(page, { agent, username, password }) {
 
     if (challengeType === 'totp') {
       console.log('Two-factor authentication required. Generating TOTP code...');
-      await submitOtpCode(page, otpInput, resolveGitHubTotpCode(agent));
+      loginTotpCode = resolveGitHubTotpCode(agent);
+      await submitOtpCode(page, otpInput, loginTotpCode);
     } else {
       console.log('Device verification required. Polling email...');
 
@@ -120,4 +135,5 @@ export async function login(page, { agent, username, password }) {
   }
 
   console.log('Logged in successfully.');
+  return { loginTotpCode };
 }
