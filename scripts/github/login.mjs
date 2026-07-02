@@ -65,6 +65,7 @@ async function submitOtpCode(page, otpInput, code) {
 // Throws on failure.
 export async function login(page, { agent, username, password }) {
   console.log(`Logging in as ${username}...`);
+  let loginTotpCode = null;
 
   await page.goto('https://github.com/login');
   await page.waitForLoadState('domcontentloaded');
@@ -89,7 +90,8 @@ export async function login(page, { agent, username, password }) {
 
     if (challengeType === 'totp') {
       console.log('Two-factor authentication required. Generating TOTP code...');
-      await submitOtpCode(page, otpInput, resolveGitHubTotpCode(agent));
+      loginTotpCode = resolveGitHubTotpCode(agent);
+      await submitOtpCode(page, otpInput, loginTotpCode);
     } else {
       console.log('Device verification required. Polling email...');
 
@@ -120,4 +122,5 @@ export async function login(page, { agent, username, password }) {
   }
 
   console.log('Logged in successfully.');
+  return { loginTotpCode };
 }

@@ -6,7 +6,8 @@
 //
 // Usage: browser run --headed ./scripts/github/token-create.mjs -- <token-name> [login-id]
 
-import { login } from './login.mjs';
+import { login, resolveGitHubTotpCode } from './login.mjs';
+import { openGitHubSensitivePage } from './sensitive-page-gate.mjs';
 import { record } from '../record.mjs';
 import { isGitHubToken, parseTokenFromText } from './tokens.mjs';
 
@@ -80,10 +81,13 @@ export default async function({ page, args }) {
     process.exit(1);
   }
 
-  await login(page, { agent: loginId, username, password });
+  const loginResult = await login(page, { agent: loginId, username, password });
 
-  await page.goto(tokenCreationUrl(tokenName));
-  await page.waitForLoadState('domcontentloaded');
+  await openGitHubSensitivePage(page, tokenCreationUrl(tokenName), {
+    agent: loginId,
+    loginTotpCode: loginResult.loginTotpCode,
+    totpResolver: resolveGitHubTotpCode,
+  });
   record(`token-create-page-${loginId}.html`, await page.content());
 
   const loginFormStillVisible = await page.locator('input[name="login"], input[name="password"]').first()

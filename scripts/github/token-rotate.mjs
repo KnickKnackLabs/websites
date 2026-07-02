@@ -6,7 +6,8 @@
 //
 // Usage: browser run --headed ./scripts/github/token-rotate.mjs -- <token-name> [login-id]
 
-import { login } from './login.mjs';
+import { login, resolveGitHubTotpCode } from './login.mjs';
+import { openGitHubSensitivePage } from './sensitive-page-gate.mjs';
 import { record } from '../record.mjs';
 import {
   findClassicTokenByName,
@@ -37,11 +38,15 @@ export default async function({ page, args }) {
   }
 
   // --- Login ---
-  await login(page, { agent: loginId, username, password });
+  const loginResult = await login(page, { agent: loginId, username, password });
+  const sensitivePageOptions = {
+    agent: loginId,
+    loginTotpCode: loginResult.loginTotpCode,
+    totpResolver: resolveGitHubTotpCode,
+  };
 
   // --- Navigate to classic tokens page ---
-  await page.goto('https://github.com/settings/tokens');
-  await page.waitForLoadState('domcontentloaded');
+  await openGitHubSensitivePage(page, 'https://github.com/settings/tokens', sensitivePageOptions);
   record(`tokens-page-${loginId}.html`, await page.content());
 
   const loginFormStillVisible = await page.locator('input[name="login"], input[name="password"]').first()
@@ -73,8 +78,7 @@ export default async function({ page, args }) {
   console.log(`Found token "${tokenName}" (ID: ${tokenId}). Regenerating...`);
 
   // --- Regenerate ---
-  await page.goto(`https://github.com/settings/tokens/${tokenId}/regenerate`);
-  await page.waitForLoadState('domcontentloaded');
+  await openGitHubSensitivePage(page, `https://github.com/settings/tokens/${tokenId}/regenerate`, sensitivePageOptions);
   record(`regenerate-page-${loginId}.html`, await page.content());
 
   // Set expiration to 30 days
