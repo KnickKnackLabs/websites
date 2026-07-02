@@ -98,6 +98,32 @@ EOF
   [[ "$output" != *"123456"* ]]
 }
 
+@test "fresh TOTP resolver can use command-backed production resolver for new code" {
+  run_js_file <<EOF
+import { resolveGitHubTotpCode } from '$SCRIPTS_DIR/login.mjs';
+import { resolveFreshGitHubTotpCode } from '$SCRIPTS_DIR/sensitive-page-gate.mjs';
+
+let calls = 0;
+const env = { GITHUB_TOTP_COMMAND: 'totp-command' };
+const execFile = () => {
+  calls += 1;
+  return calls === 1 ? '123456\n' : '654321\n';
+};
+const code = await resolveFreshGitHubTotpCode({
+  agent: 'c0da',
+  previousCode: '123456',
+  timeoutMs: 5000,
+  pollMs: 1,
+  sleep: async () => {},
+  totpResolver: agent => resolveGitHubTotpCode(agent, { env, execFile }),
+});
+console.log(JSON.stringify({ code, calls }));
+EOF
+
+  [ "$status" -eq 0 ]
+  [ "$output" = '{"code":"654321","calls":2}' ]
+}
+
 @test "openGitHubSensitivePage revisits target after clearing interstitial" {
   run_js_file <<EOF
 import { openGitHubSensitivePage } from '$SCRIPTS_DIR/sensitive-page-gate.mjs';

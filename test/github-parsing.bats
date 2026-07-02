@@ -136,6 +136,44 @@ run_js() {
   [ "$output" = "123456" ]
 }
 
+@test "resolveGitHubTotpCode: reruns command-backed resolver on each call" {
+  run_js "
+    import { resolveGitHubTotpCode } from '$SCRIPTS_DIR/login.mjs';
+    let calls = 0;
+    const execFile = (file, args, options) => {
+      calls += 1;
+      if (file !== 'bash') throw new Error('wrong file');
+      if (args[0] !== '-lc') throw new Error('wrong shell flag');
+      if (args[1] !== 'totp-command') throw new Error('wrong command');
+      if (options.encoding !== 'utf8') throw new Error('wrong encoding');
+      return calls === 1 ? '111111\n' : '222222\n';
+    };
+    const env = { GITHUB_TOTP_COMMAND: 'totp-command', GITHUB_TOTP_CODE: '999999' };
+    const first = resolveGitHubTotpCode('zeke', { env, execFile });
+    const second = resolveGitHubTotpCode('zeke', { env, execFile });
+    console.log(JSON.stringify({ first, second, calls }));
+  "
+  [ "$output" = '{"first":"111111","second":"222222","calls":2}' ]
+}
+
+@test "resolveGitHubTotpCode: sanitizes command failures" {
+  run_js "
+    import { resolveGitHubTotpCode } from '$SCRIPTS_DIR/login.mjs';
+    try {
+      resolveGitHubTotpCode('zeke', {
+        env: { GITHUB_TOTP_COMMAND: 'secret totp command' },
+        execFile: () => { throw new Error('stderr leaked 123456'); },
+      });
+      console.log('no error');
+    } catch (error) {
+      console.log(error.message);
+    }
+  "
+  [[ "$output" == *"command failed for zeke"* ]]
+  [[ "$output" != *"secret totp command"* ]]
+  [[ "$output" != *"123456"* ]]
+}
+
 @test "resolveGitHubTotpCode: requires caller-injected code" {
   run_js "
     import { resolveGitHubTotpCode } from '$SCRIPTS_DIR/login.mjs';
@@ -146,7 +184,7 @@ run_js() {
       console.log(error.message);
     }
   "
-  [[ "$output" == *"set GITHUB_TOTP_CODE"* ]]
+  [[ "$output" == *"set GITHUB_TOTP_CODE or GITHUB_TOTP_COMMAND"* ]]
   [[ "$output" != *"secrets"* ]]
 }
 
