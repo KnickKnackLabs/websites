@@ -102,11 +102,15 @@ These tasks preserve those statements for a caller to evaluate; they do not outp
 websites zillow property show '<listing-url>' --calculator --intervene
 ```
 
-`property show` reuses the listing reader and presents hydrated price, bedrooms/bathrooms,
+`property show` reuses the listing reader and presents hydrated pricing, bedrooms/bathrooms,
 area, address, coordinates, description and raw `resoFacts` (rental facts/amenities), plus photos and calculator evidence.
 Missing fields are null. Conflicting hydrated values are returned as `conflictingValues`, not silently selected.
 Narrative and structured facts remain separate: a description saying “2BR plus study” does not overwrite three structured bedrooms.
 The property view omits raw page text, hydration and expanded calculator-page copies; use `listing` for detailed evidence.
+Pricing is explicit: `price: {amount, kind}` distinguishes `monthly_rent`, `asking_price`, `zestimate`, and `unspecified`.
+`monthlyRent` is populated only for `FOR_RENT`; `askingPrice` only for explicit sale statuses.
+Provider `zestimate` and `rentZestimate` remain separate estimates, not advertised rent.
+An off-market price without an explicit matching valuation field remains unspecified, never rent.
 Empty rental-fact fields are omitted. Whole-page text is never parsed into property facts.
 Photos are rendered images only and may include neighboring content; a complete property gallery is not yet established.
 It accepts the same browser and intervention flags as `listing`; intervention resume preserves this property-record output.

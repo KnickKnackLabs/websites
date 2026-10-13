@@ -19,9 +19,20 @@ export function propertyRecord(evidence) {
     ? Object.fromEntries(Object.entries(facts).filter(([, value]) => value !== null && value !== undefined && value !== '' && (!Array.isArray(value) || value.length)))
     : facts;
   const { expandedListing, ...calculator } = evidence.calculator ?? {};
+  const amount = values('price');
+  const status = values('homeStatus');
+  const zestimate = values('zestimate');
+  // Classify only from explicit provider status/valuation fields, never from
+  // the URL, rental-search context, or a nearby page's rental language.
+  const kind = status === 'FOR_RENT' ? 'monthly_rent'
+    : ['FOR_SALE', 'PENDING', 'AUCTION'].includes(status) ? 'asking_price'
+    : typeof amount === 'number' && amount === zestimate ? 'zestimate' : 'unspecified';
   return {
     checked: evidence.checked, url: listing.url, id: listing.id,
-    address: values('address'), price: values('price'), bedrooms: values('bedrooms'),
+    address: values('address'), price: { amount, kind },
+    monthlyRent: kind === 'monthly_rent' ? amount : null,
+    askingPrice: kind === 'asking_price' ? amount : null,
+    zestimate, rentZestimate: values('rentZestimate'), bedrooms: values('bedrooms'),
     bathrooms: values('bathrooms'), livingArea: values('livingArea'), livingAreaUnits: values('livingAreaUnits'),
     homeType: values('homeType'), homeStatus: values('homeStatus'),
     latitude: values('latitude'), longitude: values('longitude'),
