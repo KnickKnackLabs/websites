@@ -1,0 +1,10 @@
+#!/usr/bin/env bun
+//MISE description="Resume an owned Zillow tab after human verification"
+//USAGE arg "<handle>" help="Private resume handle returned by --intervene"
+import { handoff } from '../../../../scripts/zillow/handoff.mjs';
+try {
+  console.log(JSON.stringify(handoff({ token: process.env.usage_handle }), null, 2));
+} catch (error) {
+  console.error(`zillow intervention resume: ${error.message}`);
+  process.exitCode = 1;
+}

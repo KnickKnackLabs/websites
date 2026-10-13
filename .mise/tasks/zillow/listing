@@ -1,0 +1,28 @@
+#!/usr/bin/env bun
+//MISE description="Read Zillow listing evidence and rendered photo metadata (read-only)"
+//USAGE arg "<url>" help="Zillow homedetails or building URL"
+//USAGE flag "--calculator" help="Open the cost calculator if unambiguously available"
+//USAGE flag "--browser <id>" help="Use an existing browser; only a new owned tab is changed"
+//USAGE flag "--headed" help="Show the browser when launching an ephemeral browser"
+//USAGE flag "--intervene" help="Launch a dedicated visible browser and retain challenges for human intervention"
+
+import { fileURLToPath } from 'node:url';
+import { runBrowser } from '../../../scripts/zillow/task.mjs';
+import { handoff } from '../../../scripts/zillow/handoff.mjs';
+import { requestedListing } from '../../../scripts/zillow/listing.mjs';
+
+try {
+  const { url } = requestedListing(process.env.usage_url);
+  const args = [url];
+  if (process.env.usage_calculator === 'true') args.push('--calculator');
+  const intervention = process.env.usage_intervene === 'true';
+  if (intervention && process.env.usage_browser) throw new Error('--intervene owns a dedicated browser; cannot combine with --browser');
+  const result = intervention ? handoff({ operation: 'listing', url, calculator: process.env.usage_calculator === 'true' }) : runBrowser(fileURLToPath(new URL('../../../scripts/zillow/listing.mjs', import.meta.url)), args, {
+    browser: process.env.usage_browser || undefined,
+    headed: process.env.usage_headed === 'true',
+  });
+  console.log(JSON.stringify(result, null, 2));
+} catch (error) {
+  console.error(`zillow listing: ${error instanceof Error ? error.message : String(error)}`);
+  process.exitCode = 1;
+}

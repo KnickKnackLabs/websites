@@ -1,0 +1,10 @@
+#!/usr/bin/env bun
+//MISE description="Cancel a Zillow intervention and close its dedicated browser"
+//USAGE arg "<handle>" help="Private resume handle returned by --intervene"
+import { handoff } from '../../../../scripts/zillow/handoff.mjs';
+try {
+  console.log(JSON.stringify(handoff({ token: process.env.usage_handle, cancel: true }), null, 2));
+} catch (error) {
+  console.error(`zillow intervention cancel: ${error.message}`);
+  process.exitCode = 1;
+}

@@ -16,16 +16,14 @@ fi
 
 BROWSER_ARGS=()
 
-# Populate BROWSER_ARGS based on --keep and --site flags.
+# Populate BROWSER_ARGS based on --keep. The legacy second (site) argument
+# is accepted for existing callers but does not select a profile: browser run
+# no longer accepts --site. Select authenticated browsers explicitly.
 # If keep is true: reuse a running browser or launch a new headed one.
 # Reports browser ID on stderr so the caller knows which browser to use later.
 setup_browser() {
   local keep="${1:-false}"
-  local site="${2:-}"
-
-  if [ -n "$site" ]; then
-    BROWSER_ARGS+=(--site "$site")
-  fi
+  BROWSER_ARGS=()
 
   if [ "$keep" = "true" ]; then
     local browser_id

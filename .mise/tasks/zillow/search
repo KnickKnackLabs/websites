@@ -1,0 +1,25 @@
+#!/usr/bin/env bun
+//MISE description="Read and verify all Zillow rental search result pages (read-only)"
+//USAGE arg "<url>" help="Zillow URL containing searchQueryState"
+//USAGE flag "--browser <id>" help="Use an existing browser; only a new owned tab is changed"
+//USAGE flag "--headed" help="Show the browser when launching an ephemeral browser"
+//USAGE flag "--intervene" help="Launch a dedicated visible browser and retain challenges for human intervention"
+
+import { fileURLToPath } from 'node:url';
+import { runBrowser } from '../../../scripts/zillow/task.mjs';
+import { handoff } from '../../../scripts/zillow/handoff.mjs';
+import { requestedSearch } from '../../../scripts/zillow/search.mjs';
+
+try {
+  const { url } = requestedSearch(process.env.usage_url);
+  const intervention = process.env.usage_intervene === 'true';
+  if (intervention && process.env.usage_browser) throw new Error('--intervene owns a dedicated browser; cannot combine with --browser');
+  const result = intervention ? handoff({ operation: 'search', url }) : runBrowser(fileURLToPath(new URL('../../../scripts/zillow/search.mjs', import.meta.url)), [url], {
+    browser: process.env.usage_browser || undefined,
+    headed: process.env.usage_headed === 'true',
+  });
+  console.log(JSON.stringify(result, null, 2));
+} catch (error) {
+  console.error(`zillow search: ${error instanceof Error ? error.message : String(error)}`);
+  process.exitCode = 1;
+}

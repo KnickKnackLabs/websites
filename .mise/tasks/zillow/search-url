@@ -1,0 +1,20 @@
+#!/usr/bin/env bun
+//MISE description="Build a Zillow rental search URL from strict TOML or JSON"
+//USAGE arg "<file>" help="Config file, or - to read stdin"
+//USAGE flag "--format <format>" default="toml" help="Config format: toml or json"
+
+import { resolve } from 'node:path';
+import { buildSearchUrl } from '../../../scripts/zillow/search-url.mjs';
+
+try {
+  const format = process.env.usage_format ?? 'toml';
+  if (!['toml', 'json'].includes(format)) throw new Error('--format must be toml or json');
+  const file = process.env.usage_file;
+  if (!file) throw new Error('Provide a config file or - for stdin');
+  const text = file === '-' ? await Bun.stdin.text() : await Bun.file(resolve(process.env.WEBSITES_CALLER_PWD ?? process.cwd(), file)).text();
+  const config = format === 'json' ? JSON.parse(text) : Bun.TOML.parse(text);
+  console.log(buildSearchUrl(config));
+} catch (error) {
+  console.error(`zillow search-url: ${error instanceof Error ? error.message : String(error)}`);
+  process.exitCode = 1;
+}
