@@ -62,6 +62,28 @@ export function handoff({ operation, url, calculator = false, token, cancel = fa
     } else record = store.load(token);
     // On unexpected errors retain the private handle and browser for recovery.
     process.stderr.write(`Zillow intervention browser: ${record.browser}; recovery handle: ${token}\n`);
+    const finish = result => {
+      // Persist completed evidence before closing: a shutdown failure or an
+      // interrupted process must not force another network read.
+      if (result.status === 'complete') {
+        record.completedResult = result;
+        record.targetId = null; // The reader already closed its owned tab.
+        store.save(token, record);
+      }
+      try { manage(['close', record.browser]); }
+      catch (error) {
+        if (result.status !== 'complete') throw error;
+        process.stderr.write(`Zillow read completed; browser cleanup pending: ${error.message}\n`);
+        return { ...result, cleanup: { status: 'pending', browser: record.browser,
+          recoveryHandle: token, error: error.message } };
+      }
+      store.remove(token);
+      return result;
+    };
+    if (record.completedResult) {
+      if (record.completedResult.status !== 'complete') throw new Error('Invalid stored completed result');
+      return finish(cancel ? { status: 'cancelled' } : record.completedResult);
+    }
     if (cancel && !record.targetId) {
       manage(['close', record.browser]); store.remove(token);
       return { status: 'cancelled' };
@@ -75,8 +97,6 @@ export function handoff({ operation, url, calculator = false, token, cancel = fa
         instruction: 'Ask the human to solve verification in the visible Zillow tab, then run websites zillow intervention resume with this handle. Do not automate solving.' };
     }
     if (!['complete', 'cancelled'].includes(result.status)) throw new Error('Unexpected intervention result');
-    manage(['close', record.browser]);
-    store.remove(token);
-    return result;
+    return finish(result);
   } finally { unlock(); }
 }

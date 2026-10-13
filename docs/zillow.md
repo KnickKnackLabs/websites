@@ -149,7 +149,10 @@ Do not use this dedicated browser for unrelated tabs: finishing or cancelling cl
 Handles are stored in `~/.local/state/websites/zillow/` with private directory/file permissions.
 They carry source URLs, exact target IDs, and operation options. Treat them as private local capabilities.
 Concurrent use of a handle is rejected. Unexpected errors retain recovery state and print the browser ID/handle to stderr.
-If browser shutdown fails after the tab closed, use `cancel` for cleanup.
+If browser shutdown fails after a successful read, the task still returns `status: complete` and its evidence,
+with `cleanup: {status: pending, browser, recoveryHandle, error}`. This does not claim the browser closed.
+Completed evidence is saved privately before shutdown. `intervention resume <recoveryHandle>` retries cleanup
+and returns the saved result without rereading Zillow; `intervention cancel <recoveryHandle>` cleans up and discards it.
 If the browser is already gone or an interrupted process left a `.lock` directory, recovery is manual:
 verify no operation is running before removing that handle's lock/state, and use `browser close <id>` when necessary.
 There is no automatic expiry or restart after a browser crash.
@@ -182,5 +185,5 @@ A synthetic, network-intercepted headed-browser smoke verified challenge parking
 in-place synthetic completion, and target cleanup across separate browser connections.
 This exercised the handoff plumbing, not real human verification or Zillow extraction.
 It also exposed a managed-browser shutdown race (`ENOTEMPTY` in temporary-profile removal);
-retrying `browser close <id>` cleaned up its stopped registry entry. Tool cleanup failures retain recovery handles.
+retrying `browser close <id>` cleaned up its stopped registry entry. Tool cleanup failures retain recovery handles; completed reads remain usable with an explicit cleanup warning.
 Successful live search/listing extraction, human-assisted verification, and calculator layout remain unverified; no challenge was bypassed.
