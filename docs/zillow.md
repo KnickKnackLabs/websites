@@ -115,14 +115,30 @@ Pricing is explicit: `price: {amount, kind}` distinguishes `monthly_rent`, `aski
 `monthlyRent` is populated only for `FOR_RENT`; `askingPrice` only for explicit sale statuses.
 Provider `zestimate` and `rentZestimate` remain separate estimates, not advertised rent.
 An off-market price without an explicit matching valuation field remains unspecified, never rent.
-`recordType` distinguishes `individual_property` from `building`. Building pages may have no individual hydration;
-use their scoped `sections` and calculator evidence rather than treating missing fields or a building price range as a unit's rent.
+`recordType` distinguishes `individual_property` from `building`. Building pages use their own identity-checked hydration,
+scoped `sections`, and calculator evidence. A building price range is never promoted to an individual unit's rent.
 Empty rental-fact fields are omitted. Whole-page text is never parsed into property facts.
 Photos are rendered images only and may include neighboring content; a complete property gallery is not yet established.
 It accepts the same browser and intervention flags as `listing`; intervention resume preserves this property-record output.
 This adds a convenient structured view, not inferred pet eligibility, utility costs or availability guarantees.
 A live Cedar Lake read returned hydrated facts, description and scoped inline calculator text successfully;
 human-assisted challenge completion remains unverified.
+
+## Available building units
+
+For `/apartments/...` and `/b/...` URLs, `property show` includes `building` metadata and `availableUnits`.
+Unit records come only from the building's explicit floor-plan units and ungrouped units, not nearby listings or floor-plan summaries.
+Each record includes provider identity, unit number, beds/baths/area, price and base rent, required monthly fee range,
+the provider's fee-inclusion flag, lease/pet evidence, description, and unit gallery metadata when exposed.
+Missing unit facts remain missing; floor-plan context is kept separately rather than used as a fallback.
+
+`availableUnits.complete` means collection matched the provider's `availableUnitCount`, with valid collections and distinct unit identities.
+It does not mean every physical unit in the building, confirmed availability, or an all-in cost.
+Missing counts, duplicate identities, malformed collections, or count mismatches return `complete: false` with `reasons` and the records collected.
+`availableFrom.source` preserves the provider value; numeric epoch milliseconds also produce a UTC `instant`, not an inferred local move-in date.
+No individual listing URL is fabricated from a unit ID.
+
+A live Solano read collected all 15 provider-reported available units and retained their base rent and required fees separately.
 
 ## Hand control to a human
 

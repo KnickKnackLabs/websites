@@ -40,6 +40,27 @@ export default async function ({ context }) {
     }]);
     passedScenarios.push('hydration and Zillow photo filtering');
 
+    const building = {
+      bdpUrl: '/apartments/example-city/example-building/AbCd/',
+      lotId: 'building-1',
+      floorPlans: [{ name: 'One bedroom', units: [{ zpid: '123', unitNumber: 'Unit 124' }] }],
+      rentalUnitsSummary: { availableUnitCount: 1 },
+    };
+    const buildingHydration = {
+      props: { pageProps: { componentProps: { initialReduxState: {
+        gdp: { building },
+        nearbyProperties: [{ zpid: '999' }],
+        floorplanLightbox: { units: [{ zpid: 'dummy' }] },
+      } } } },
+    };
+    const buildingPage = await render(`
+      <script id="__NEXT_DATA__" type="application/json">${JSON.stringify(buildingHydration)}</script>
+      <h1>Example building</h1><h2>Available units</h2>
+    `);
+    assert.deepEqual(buildingPage.building, building);
+    assert.deepEqual(buildingPage.properties, []);
+    passedScenarios.push('building hydration uses its own Redux owner');
+
     const inline = await render(calculatorHtml + unrelatedListingHtml);
     assert.match(inline.calculatorText, /Required rent \$1700/);
     assert.doesNotMatch(inline.calculatorText, /9999/);

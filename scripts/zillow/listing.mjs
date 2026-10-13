@@ -44,6 +44,20 @@ function requireHydratedIdentity(properties, requested) {
   }
 }
 
+function requireBuildingIdentity(building, requested) {
+  if (!building) return;
+  if (requested.id || typeof building !== 'object' || Array.isArray(building)) {
+    throw new Error('Unexpected hydrated building evidence');
+  }
+  if (typeof building.bdpUrl !== 'string') {
+    throw new Error('Hydrated building identity is missing');
+  }
+  const hydrated = requestedListing(new URL(building.bdpUrl, requested.url).href);
+  if (!matchesRequestedListing(hydrated, requested)) {
+    throw new Error('Hydrated building identity differs from requested listing');
+  }
+}
+
 export function listingEvidence(snapshot, requested) {
   const current = requestedListing(snapshot.url);
   if (!matchesRequestedListing(current, requested)) {
@@ -58,6 +72,8 @@ export function listingEvidence(snapshot, requested) {
 
   const properties = snapshot.properties ?? [];
   requireHydratedIdentity(properties, requested);
+  const building = snapshot.building ?? null;
+  requireBuildingIdentity(building, requested);
   if (typeof snapshot.text !== 'string' || !listingContent.test(snapshot.text)) {
     throw new Error('Listing did not render usable details');
   }
@@ -69,6 +85,7 @@ export function listingEvidence(snapshot, requested) {
     title: snapshot.title ?? null,
     text: snapshot.text,
     properties,
+    building,
     sections: snapshot.sections ?? {},
     photos: snapshot.photos ?? [],
     ogImage: snapshot.ogImage ?? null,

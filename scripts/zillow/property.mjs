@@ -1,5 +1,6 @@
 import { readListing } from './listing.mjs';
 import { RESULT_PREFIX } from './browser-command.mjs';
+import { buildingRecord, buildingUnits } from './building-units.mjs';
 
 function sourceField(properties, field) {
   const distinctValues = new Map();
@@ -54,7 +55,11 @@ function propertyPricing(properties) {
 // from narrative or promote a building's price range to an individual rent.
 export function propertyRecord(evidence) {
   const listing = evidence.listing;
-  const properties = listing.properties;
+  const properties = listing.id ? listing.properties : [];
+  const unitEvidence = listing.id ? {} : {
+    building: buildingRecord(listing.building),
+    availableUnits: buildingUnits(listing.building),
+  };
   const { expandedListing, ...calculator } = evidence.calculator ?? {};
 
   return {
@@ -62,6 +67,7 @@ export function propertyRecord(evidence) {
     url: listing.url,
     id: listing.id,
     recordType: listing.id ? 'individual_property' : 'building',
+    ...unitEvidence,
     address: sourceField(properties, 'address'),
     ...propertyPricing(properties),
     bedrooms: sourceField(properties, 'bedrooms'),

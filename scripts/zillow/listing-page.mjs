@@ -8,11 +8,19 @@ export function readListingPage(action = 'snapshot') {
     return element.getClientRects().length > 0;
   }
 
-  function readHydratedProperties() {
+  function readPageProps() {
     const hydration = document.querySelector('#__NEXT_DATA__');
-    if (!hydration) return [];
+    if (!hydration) return null;
+    return JSON.parse(hydration.textContent)?.props?.pageProps ?? null;
+  }
 
-    const pageProps = JSON.parse(hydration.textContent)?.props?.pageProps;
+  function readHydratedBuilding(pageProps) {
+    // This is the building's own data owner. Do not recursively search Redux:
+    // nearby properties and lightbox defaults also contain unit-like objects.
+    return pageProps?.componentProps?.initialReduxState?.gdp?.building ?? null;
+  }
+
+  function readHydratedProperties(pageProps) {
     const properties = [];
     if (pageProps?.property) properties.push(pageProps.property);
 
@@ -145,12 +153,14 @@ export function readListingPage(action = 'snapshot') {
   if (action === 'open_calculator') return JSON.stringify(clickCalculator());
   if (action !== 'snapshot') throw new Error('Unknown listing page action');
 
+  const pageProps = readPageProps();
   return JSON.stringify({
     url: location.href,
     canonicalUrl: document.querySelector('link[rel="canonical"]')?.href ?? null,
     title: document.title,
     text: document.body.innerText,
-    properties: readHydratedProperties(),
+    properties: readHydratedProperties(pageProps),
+    building: readHydratedBuilding(pageProps),
     photos: readRenderedPhotos(),
     ogImage: document.querySelector('meta[property="og:image"]')?.content ?? null,
     calculatorText: readCalculatorText(),
