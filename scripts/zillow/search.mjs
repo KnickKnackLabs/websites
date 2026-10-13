@@ -2,120 +2,222 @@ import { zillowUrl, evaluateJSON, withOwnedTab, delay } from './browser.mjs';
 import { RESULT_PREFIX } from './task.mjs';
 
 export const MAX_PAGES = 20;
-const QUERY_KEYS = ['regionSelection', 'mapBounds', 'filterState'];
+const QUERY_SCOPE_FIELDS = ['regionSelection', 'mapBounds', 'filterState'];
+const RENDER_ATTEMPTS = 15;
+const RENDER_POLL_DELAY_MS = 1000;
+const BETWEEN_PAGES_DELAY_MS = 1500;
+const NAVIGATION_TIMEOUT_MS = 60000;
+
+function isObject(value) {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
 
 export function requestedSearch(value) {
   const url = zillowUrl(value);
-  const state = url.searchParams.get('searchQueryState');
-  if (!state) throw new Error('URL must include searchQueryState');
-  const query = JSON.parse(state);
-  if (!query || typeof query !== 'object' || Array.isArray(query) || !query.filterState || typeof query.filterState !== 'object' || Array.isArray(query.filterState) || (!query.regionSelection && !query.mapBounds)) {
+  const encodedState = url.searchParams.get('searchQueryState');
+  if (!encodedState) throw new Error('URL must include searchQueryState');
+
+  const query = JSON.parse(encodedState);
+  const explicitScope = isObject(query)
+    && isObject(query.filterState)
+    && (query.regionSelection || query.mapBounds);
+  if (!explicitScope) {
     throw new Error('Search requires explicit filters and regionSelection or mapBounds');
   }
   return { url: url.href, query };
 }
 
-function sorted(value) {
-  if (Array.isArray(value)) return value.map(sorted);
-  if (value && typeof value === 'object') return Object.fromEntries(Object.keys(value).sort().map(key => [key, sorted(value[key])]));
-  return value;
+function sortObjectKeys(value) {
+  if (Array.isArray(value)) return value.map(sortObjectKeys);
+  if (!isObject(value)) return value;
+
+  const sortedEntries = Object.keys(value)
+    .sort()
+    .map(key => [key, sortObjectKeys(value[key])]);
+  return Object.fromEntries(sortedEntries);
 }
 
-function comparable(key, value) {
-  const copy = structuredClone(value);
-  // Zillow inserts null for unspecified numeric bounds; nothing else is relaxed.
-  if (key === 'filterState') {
+function comparableScopeField(field, value) {
+  const normalized = structuredClone(value);
+  // Zillow inserts null for unspecified numeric bounds; no other differences
+  // are relaxed, so a stale or broadened query cannot silently pass.
+  if (field === 'filterState') {
     for (const name of ['monthlyPayment', 'beds', 'baths']) {
-      for (const bound of ['min', 'max']) if (copy?.[name]?.[bound] === null) delete copy[name][bound];
+      for (const bound of ['min', 'max']) {
+        if (normalized?.[name]?.[bound] === null) delete normalized[name][bound];
+      }
     }
   }
-  return JSON.stringify(sorted(copy));
+  return JSON.stringify(sortObjectKeys(normalized));
 }
 
 export function requireRequestedQuery(rendered, requested) {
-  for (const key of QUERY_KEYS) {
-    if (comparable(key, rendered?.[key]) !== comparable(key, requested[key])) throw new Error(`Rendered search differs from requested search (${key})`);
+  for (const field of QUERY_SCOPE_FIELDS) {
+    const actual = comparableScopeField(field, rendered?.[field]);
+    const expected = comparableScopeField(field, requested[field]);
+    if (actual !== expected) {
+      throw new Error(`Rendered search differs from requested search (${field})`);
+    }
   }
 }
 
-// Browser-realm function: no imported helpers or free variables.
+// Serialized into the browser realm: no imported helpers or free variables.
 export function renderedSearchSnapshot() {
   const element = document.querySelector('#__NEXT_DATA__');
   const hydration = element ? JSON.parse(element.textContent) : null;
   const search = hydration?.props?.pageProps?.searchPageState;
-  return JSON.stringify({ url: location.href, title: document.title, text: document.body.innerText, query: search?.queryState, rendered: search?.serverRenderTimestamp, cat1: search?.cat1 });
+  return JSON.stringify({
+    url: location.href,
+    title: document.title,
+    text: document.body.innerText,
+    query: search?.queryState,
+    rendered: search?.serverRenderTimestamp,
+    cat1: search?.cat1,
+  });
 }
 
-export function pageEvidence(snapshot, number) {
+export function pageEvidence(snapshot, pageNumber) {
   zillowUrl(snapshot.url);
   const rows = snapshot.cat1?.searchResults?.listResults;
-  const list = snapshot.cat1?.searchList;
+  const summary = snapshot.cat1?.searchList;
   if (!Array.isArray(rows)) throw new Error('Missing rendered listing rows');
-  const totalPages = list?.totalPages === 0 && rows.length === 0 ? 1 : list?.totalPages;
-  if (!Number.isSafeInteger(totalPages) || totalPages < 1 || totalPages > MAX_PAGES) throw new Error('Unsupported page count; completeness not established');
-  if ((snapshot.query?.pagination?.currentPage ?? 1) !== number) throw new Error('Wrong rendered search page');
-  if (!Number.isSafeInteger(list.totalResultCount) || list.totalResultCount < 0) throw new Error('Invalid advertised result count');
-  return { number, url: snapshot.url, rendered: snapshot.rendered ?? null, totalPages, advertisedCount: list.totalResultCount, rows };
-}
 
-export function completeSearch(pages) {
-  if (!pages.length || pages.some((page, index) => page.number !== index + 1 || page.totalPages !== pages.length)) throw new Error('Result pages are incomplete');
-  const ids = new Set();
-  const listings = [];
-  let units = 0;
-  for (const page of pages) {
-    for (const row of page.rows) {
-      if (!row || !['string', 'number'].includes(typeof row.zpid) || !String(row.zpid).trim() || (typeof row.zpid === 'number' && (!Number.isSafeInteger(row.zpid) || row.zpid <= 0))) throw new Error('Listing lacks a Zillow identity');
-      const id = String(row.zpid);
-      if (ids.has(id)) throw new Error('Repeated listing across pages; completeness needs review');
-      ids.add(id);
-      if (typeof row.detailUrl !== 'string' || !row.detailUrl.trim()) throw new Error('Listing lacks a source URL');
-      const url = zillowUrl(row.detailUrl, 'https://www.zillow.com');
-      if (url.pathname === '/') throw new Error('Listing lacks a detail URL');
-      const availabilityCount = row.availabilityCount === undefined ? 1 : row.availabilityCount;
-      if (!Number.isSafeInteger(availabilityCount) || availabilityCount < 1) throw new Error('Invalid listing availability count');
-      units += availabilityCount;
-      if (!Number.isSafeInteger(units)) throw new Error('Invalid total availability count');
-      listings.push({ id, url: url.href, isBuilding: row.isBuilding ?? null, availabilityCount, source: row });
-    }
+  const emptySearch = summary?.totalPages === 0 && rows.length === 0;
+  const totalPages = emptySearch ? 1 : summary?.totalPages;
+  if (!Number.isSafeInteger(totalPages) || totalPages < 1 || totalPages > MAX_PAGES) {
+    throw new Error('Unsupported page count; completeness not established');
   }
-  if (pages.some(page => page.advertisedCount !== units)) throw new Error('Listing rows do not account for the advertised count; completeness not established');
+  const renderedPage = snapshot.query?.pagination?.currentPage ?? 1;
+  if (renderedPage !== pageNumber) throw new Error('Wrong rendered search page');
+
+  const advertisedCount = summary.totalResultCount;
+  if (!Number.isSafeInteger(advertisedCount) || advertisedCount < 0) {
+    throw new Error('Invalid advertised result count');
+  }
   return {
-    complete: true, advertisedCount: units, rowCount: listings.length,
-    pages: pages.map(({ rows, ...evidence }) => evidence), listings,
+    number: pageNumber,
+    url: snapshot.url,
+    rendered: snapshot.rendered ?? null,
+    totalPages,
+    advertisedCount,
+    rows,
   };
 }
 
-export async function waitForSearch(session, { sleep = delay, attempts = 15 } = {}) {
+function listingFromRow(row) {
+  const stringIdentity = typeof row?.zpid === 'string' && row.zpid.trim().length > 0;
+  const numericIdentity = Number.isSafeInteger(row?.zpid) && row.zpid > 0;
+  if (!stringIdentity && !numericIdentity) throw new Error('Listing lacks a Zillow identity');
+
+  if (typeof row.detailUrl !== 'string' || !row.detailUrl.trim()) {
+    throw new Error('Listing lacks a source URL');
+  }
+  const url = zillowUrl(row.detailUrl, 'https://www.zillow.com');
+  if (url.pathname === '/') throw new Error('Listing lacks a detail URL');
+
+  const availabilityCount = row.availabilityCount === undefined ? 1 : row.availabilityCount;
+  if (!Number.isSafeInteger(availabilityCount) || availabilityCount < 1) {
+    throw new Error('Invalid listing availability count');
+  }
+  return {
+    id: String(row.zpid),
+    url: url.href,
+    isBuilding: row.isBuilding ?? null,
+    availabilityCount,
+    source: row,
+  };
+}
+
+function requireCompletePages(pages) {
+  const orderedAndComplete = pages.length > 0 && pages.every((page, index) => (
+    page.number === index + 1 && page.totalPages === pages.length
+  ));
+  if (!orderedAndComplete) throw new Error('Result pages are incomplete');
+}
+
+export function completeSearch(pages) {
+  requireCompletePages(pages);
+  const seenIds = new Set();
+  const listings = [];
+  let availableUnits = 0;
+
+  for (const page of pages) {
+    for (const row of page.rows) {
+      const listing = listingFromRow(row);
+      if (seenIds.has(listing.id)) {
+        throw new Error('Repeated listing across pages; completeness needs review');
+      }
+      seenIds.add(listing.id);
+      availableUnits += listing.availabilityCount;
+      if (!Number.isSafeInteger(availableUnits)) {
+        throw new Error('Invalid total availability count');
+      }
+      listings.push(listing);
+    }
+  }
+
+  // Building rows can represent several units. Count those units, not rows,
+  // while requiring the same advertised total on every rendered page.
+  if (pages.some(page => page.advertisedCount !== availableUnits)) {
+    throw new Error('Listing rows do not account for the advertised count; completeness not established');
+  }
+  const pageSummaries = pages.map(({ rows, ...summary }) => summary);
+  return {
+    complete: true,
+    advertisedCount: availableUnits,
+    rowCount: listings.length,
+    pages: pageSummaries,
+    listings,
+  };
+}
+
+export async function waitForSearch(session, { sleep = delay, attempts = RENDER_ATTEMPTS } = {}) {
   for (let attempt = 0; attempt < attempts; attempt++) {
     const snapshot = await evaluateJSON(session, renderedSearchSnapshot);
-    if (snapshot.cat1 && /rentals available|rental listings|no matching results/i.test(snapshot.text ?? '')) return snapshot;
-    if (attempt + 1 < attempts) await sleep(1000);
+    const visibleSearch = /rentals available|rental listings|no matching results/i.test(snapshot.text ?? '');
+    if (snapshot.cat1 && visibleSearch) return snapshot;
+    if (attempt + 1 < attempts) await sleep(RENDER_POLL_DELAY_MS);
   }
   throw new Error('Search did not render usable results');
+}
+
+function searchPageUrl(url, query, pageNumber) {
+  const next = new URL(url);
+  const pageQuery = { ...query, pagination: { currentPage: pageNumber } };
+  next.searchParams.set('searchQueryState', JSON.stringify(pageQuery));
+  return next.href;
 }
 
 export async function readSearch(context, value, { sleep = delay, page: resumedPage, onChallenge } = {}) {
   const { url, query } = requestedSearch(value);
   return withOwnedTab(context, async (page, session) => {
-    // Confirm the human solved the parked challenge before restarting pagination.
-    // Restart from page one so partial results are never reused as a complete search.
+    // Confirm the parked challenge was solved, then restart at page one.
+    // Partial results from the interrupted read never imply completeness.
     if (resumedPage) await evaluateJSON(session, renderedSearchSnapshot);
+
     const pages = [];
     let totalPages;
-    for (let number = 1; number <= (totalPages ?? 1); number++) {
-      const next = new URL(url);
-      next.searchParams.set('searchQueryState', JSON.stringify({ ...query, pagination: { currentPage: number } }));
-      await page.goto(next.href, { waitUntil: 'domcontentloaded', timeout: 60000 });
+    for (let pageNumber = 1; pageNumber <= (totalPages ?? 1); pageNumber++) {
+      await page.goto(searchPageUrl(url, query, pageNumber), {
+        waitUntil: 'domcontentloaded',
+        timeout: NAVIGATION_TIMEOUT_MS,
+      });
       const snapshot = await waitForSearch(session, { sleep });
       requireRequestedQuery(snapshot.query, query);
-      const evidence = pageEvidence(snapshot, number);
-      if (totalPages !== undefined && totalPages !== evidence.totalPages) throw new Error('Page count changed during search');
+      const evidence = pageEvidence(snapshot, pageNumber);
+      if (totalPages !== undefined && totalPages !== evidence.totalPages) {
+        throw new Error('Page count changed during search');
+      }
       totalPages = evidence.totalPages;
       pages.push(evidence);
-      if (number < totalPages) await sleep(1500);
+      if (pageNumber < totalPages) await sleep(BETWEEN_PAGES_DELAY_MS);
     }
-    return { checked: new Date().toISOString(), requestedUrl: url, query, ...completeSearch(pages) };
+    return {
+      checked: new Date().toISOString(),
+      requestedUrl: url,
+      query,
+      ...completeSearch(pages),
+    };
   }, { page: resumedPage, onChallenge });
 }
 
