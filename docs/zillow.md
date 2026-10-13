@@ -69,13 +69,17 @@ Completeness describes this checked result set, not a guarantee that Zillow expo
 
 ## Read a listing
 
-`listing` accepts homedetails URLs ending in a numeric `_zpid` identity or `/b/<name>/<id>/` building URLs.
+`listing` and `property show` accept individual `/homedetails/<name>/<numeric-id>_zpid/` URLs
+and building URLs under `/b/<name>/<id>/` or `/apartments/<city>/<name>/<id>/`.
+Houses, condos, townhouses, and individual apartment units use the same homedetails URL family.
 It checks the rendered URL, canonical URL when present, and known hydrated property identities against the requested listing.
 It also requires rendered rental/building detail content, not just a URL or a generic page.
 
 Successful JSON contains `checked`, `requestedUrl`, `listing`, `calculator`, and `photoScope`.
 `listing` preserves the visible `text`, `title`, source URLs, known hydrated `properties`,
 rendered photo URLs/alt text, and `ogImage` when present.
+`sections` contains bounded visible narrative, facts, policies, amenities, and available-unit sections when identified.
+Sections preserve source text, not inferred unit records; collapsed content and unrecognized sections may be absent.
 Properties are raw source objects, not a stable normalized schema.
 Individual property reads require hydrated Zillow IDs matching the requested ID; missing identity fails closed.
 Building reads may lack property hydration and rely on the matching URL/canonical path plus rendered building content.
@@ -89,7 +93,7 @@ Original listing evidence stays separate from `calculator.expandedListing`, the 
 anchored by `Cost calculator` with both monthly and move-in cost sections.
 Inline containers containing other listing sections or property links are rejected; whole-page text is never sliced into calculator evidence.
 Otherwise it is null with `reason: calculator_not_identified`, even if the click succeeded.
-Inline detection has synthetic coverage but has not been verified against a live Zillow DOM.
+Inline detection has synthetic Chromium coverage and successful live individual-property and apartment-building reads.
 No broad `Show more` controls are clicked. The reader does not claim that all narrative sections have been expanded.
 
 A calculator's “total monthly” figure may omit tenant-paid utilities.
@@ -111,6 +115,8 @@ Pricing is explicit: `price: {amount, kind}` distinguishes `monthly_rent`, `aski
 `monthlyRent` is populated only for `FOR_RENT`; `askingPrice` only for explicit sale statuses.
 Provider `zestimate` and `rentZestimate` remain separate estimates, not advertised rent.
 An off-market price without an explicit matching valuation field remains unspecified, never rent.
+`recordType` distinguishes `individual_property` from `building`. Building pages may have no individual hydration;
+use their scoped `sections` and calculator evidence rather than treating missing fields or a building price range as a unit's rent.
 Empty rental-fact fields are omitted. Whole-page text is never parsed into property facts.
 Photos are rendered images only and may include neighboring content; a complete property gallery is not yet established.
 It accepts the same browser and intervention flags as `listing`; intervention resume preserves this property-record output.
@@ -120,7 +126,7 @@ human-assisted challenge completion remains unverified.
 
 ## Hand control to a human
 
-Use `--intervene` on `search` or `listing` when a human can help with verification:
+Use `--intervene` on `search`, `listing`, or `property show` when a human can help with verification:
 
 ```sh
 websites zillow listing --intervene --calculator 'https://www.zillow.com/homedetails/example/123_zpid/'
@@ -177,7 +183,9 @@ Missing, malformed, duplicate, or failed-process result frames are errors, not p
 Output can contain addresses, photos, descriptions, and other listing data. Store it privately as appropriate.
 Tests use synthetic evidence and mocked browser flows, not private captured pages.
 Run `mise run test` for the existing BATS gate, which also runs the Zillow Node tests.
-Offline tests cover synthetic evidence and mocked flows.
+Offline tests cover synthetic evidence and mocked transport/lifecycle flows.
+The gate also runs synthetic HTML fixtures in real Chromium to check DOM containment, hydration, photos, and calculator controls,
+without fetching Zillow or other remote resources.
 A real ephemeral-browser smoke verified CDP evaluation, result transport, and owned-tab cleanup.
 A public Zillow listing smoke reached a human-verification challenge, with no successful listing JSON.
 That exposed the `Press & Hold` wording; challenge detection now covers it with a regression test.
@@ -186,4 +194,5 @@ in-place synthetic completion, and target cleanup across separate browser connec
 This exercised the handoff plumbing, not real human verification or Zillow extraction.
 It also exposed a managed-browser shutdown race (`ENOTEMPTY` in temporary-profile removal);
 retrying `browser close <id>` cleaned up its stopped registry entry. Tool cleanup failures retain recovery handles; completed reads remain usable with an explicit cleanup warning.
-Successful live search/listing extraction, human-assisted verification, and calculator layout remain unverified; no challenge was bypassed.
+Live individual-property extraction and Solano apartment-building sections/calculator reads succeeded.
+Successful live search pagination and actual human-assisted verification remain unverified; no challenge was bypassed.
