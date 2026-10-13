@@ -8,10 +8,19 @@ import { buildSearchUrl } from '../../../scripts/zillow/search-url.mjs';
 
 try {
   const format = process.env.usage_format ?? 'toml';
-  if (!['toml', 'json'].includes(format)) throw new Error('--format must be toml or json');
+  if (!['toml', 'json'].includes(format)) {
+    throw new Error('--format must be toml or json');
+  }
   const file = process.env.usage_file;
   if (!file) throw new Error('Provide a config file or - for stdin');
-  const text = file === '-' ? await Bun.stdin.text() : await Bun.file(resolve(process.env.WEBSITES_CALLER_PWD ?? process.cwd(), file)).text();
+
+  let text;
+  if (file === '-') {
+    text = await Bun.stdin.text();
+  } else {
+    const callerDirectory = process.env.WEBSITES_CALLER_PWD ?? process.cwd();
+    text = await Bun.file(resolve(callerDirectory, file)).text();
+  }
   const config = format === 'json' ? JSON.parse(text) : Bun.TOML.parse(text);
   console.log(buildSearchUrl(config));
 } catch (error) {

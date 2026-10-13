@@ -7,19 +7,28 @@
 //USAGE flag "--intervene" help="Keep verification open in a dedicated visible browser for human help"
 import { fileURLToPath } from 'node:url';
 import { requestedListing } from '../../../../scripts/zillow/listing.mjs';
-import { runBrowser } from '../../../../scripts/zillow/task.mjs';
+import { runBrowser } from '../../../../scripts/zillow/browser-command.mjs';
 import { handoff } from '../../../../scripts/zillow/handoff.mjs';
 
 try {
   const { url } = requestedListing(process.env.usage_url);
   const calculator = process.env.usage_calculator === 'true';
   const intervention = process.env.usage_intervene === 'true';
-  if (intervention && process.env.usage_browser) throw new Error('--intervene owns a dedicated browser; cannot combine with --browser');
-  const result = intervention ? handoff({ operation: 'property', url, calculator })
-    : runBrowser(fileURLToPath(new URL('../../../../scripts/zillow/property.mjs', import.meta.url)),
-      calculator ? [url, '--calculator'] : [url], {
-        browser: process.env.usage_browser || undefined, headed: process.env.usage_headed === 'true',
-      });
+  const browser = process.env.usage_browser || undefined;
+  const headed = process.env.usage_headed === 'true';
+  if (intervention && browser) {
+    throw new Error('--intervene owns a dedicated browser; cannot combine with --browser');
+  }
+
+  let result;
+  if (intervention) {
+    result = handoff({ operation: 'property', url, calculator });
+  } else {
+    const script = fileURLToPath(new URL('../../../../scripts/zillow/property.mjs', import.meta.url));
+    const args = [url];
+    if (calculator) args.push('--calculator');
+    result = runBrowser(script, args, { browser, headed });
+  }
   console.log(JSON.stringify(result, null, 2));
 } catch (error) {
   console.error(`zillow property show: ${error instanceof Error ? error.message : String(error)}`);

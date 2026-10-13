@@ -1,5 +1,5 @@
 import { zillowUrl, evaluateJSON, withOwnedTab, delay } from './browser.mjs';
-import { RESULT_PREFIX } from './task.mjs';
+import { RESULT_PREFIX } from './browser-command.mjs';
 
 export const MAX_PAGES = 20;
 const QUERY_SCOPE_FIELDS = ['regionSelection', 'mapBounds', 'filterState'];

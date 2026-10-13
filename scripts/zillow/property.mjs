@@ -1,5 +1,5 @@
 import { readListing } from './listing.mjs';
-import { RESULT_PREFIX } from './task.mjs';
+import { RESULT_PREFIX } from './browser-command.mjs';
 
 function sourceField(properties, field) {
   const distinctValues = new Map();

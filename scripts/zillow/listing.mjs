@@ -1,6 +1,6 @@
 import { zillowUrl, evaluateJSON, withOwnedTab, delay } from './browser.mjs';
 import { readListingPage } from './listing-page.mjs';
-import { RESULT_PREFIX } from './task.mjs';
+import { RESULT_PREFIX } from './browser-command.mjs';
 
 const listingContent = /rental facts|what.s special|rental listing|available units|building overview|building details/i;
 const renderAttempts = 15;
