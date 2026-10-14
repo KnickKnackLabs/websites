@@ -1,0 +1,20 @@
+#!/usr/bin/env bun
+//MISE description="Compare two saved Zillow property records without fetching pages"
+//USAGE arg "<before>" help="Earlier property show JSON file"
+//USAGE arg "<after>" help="Later property show JSON file"
+
+import { resolve } from 'node:path';
+import { propertyChanges } from '../../../../scripts/zillow/property-changes.mjs';
+
+try {
+  const callerDirectory = process.env.WEBSITES_CALLER_PWD ?? process.cwd();
+  const beforePath = resolve(callerDirectory, process.env.usage_before);
+  const afterPath = resolve(callerDirectory, process.env.usage_after);
+  const before = JSON.parse(await Bun.file(beforePath).text());
+  const after = JSON.parse(await Bun.file(afterPath).text());
+  const changes = propertyChanges(before, after);
+  console.log(JSON.stringify(changes, null, 2));
+} catch (error) {
+  console.error(`zillow property changes: ${error instanceof Error ? error.message : String(error)}`);
+  process.exitCode = 1;
+}

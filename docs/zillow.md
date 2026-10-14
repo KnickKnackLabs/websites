@@ -161,6 +161,45 @@ It does not change pet/applicant counts or expand `Show more` sections.
 An estimated monthly total is not an all-in quote; “No required one-time fees provided” does not prove there is no deposit.
 Synthetic Chromium tests cover linked-menu ownership and exact selection; a live building-unit read verified matching selection and estimate.
 
+## Compare saved property evidence
+
+Save two successful `property show` reads, then compare them without opening a browser:
+
+```sh
+websites zillow property show '<listing-url>' > before.json
+# Run this later, with the same calculator/unit options if you need cost comparisons.
+websites zillow property show '<listing-url>' > after.json
+websites zillow property changes before.json after.json
+```
+
+The input files may contain plain property records or completed intervention results, including pending cleanup.
+Parked verification results and raw `listing` output are not property snapshots.
+Paths use `WEBSITES_CALLER_PWD` when supplied, otherwise the task working directory.
+The command does not fetch pages, update files, or maintain a snapshot database.
+Keep saved listing evidence private; shell redirection does not set private file permissions for you.
+
+Output includes `changed`, field-level `changes` with before/after values, `units`, `calculator`, and `warnings`.
+Both changed and unchanged comparisons exit successfully; invalid input exits nonzero.
+The records must identify the same property and the after timestamp must not predate the before timestamp.
+Individual properties match by Zillow ID even if their URL slug changed; building URLs must have the same path.
+
+Comparison covers pricing, valuations, status, dimensions, location, narrative, rental facts, scoped sections and building metadata.
+It ignores read timestamps, titles, rendered photos and duplicate derived pricing fields.
+Arrays inside a fact retain source order; an array reorder can therefore be reported as changed evidence.
+A fact becoming null is an evidence change, not proof that a provider removed the underlying feature.
+`changed: false` means no differences in compared evidence, not a guarantee that the live listing is unchanged.
+
+Building units match by provider identity, not row order or address.
+Unit pricing, required fees, lease/pet/deposit evidence, availability source and floor-plan context are compared.
+Only two complete collections permit `added` and `removed` reports; these describe provider-listed membership, not confirmed availability.
+With an incomplete collection, the command compares shared units but skips membership changes and emits a warning.
+Missing or duplicate unit identities make comparison fail rather than guess a match.
+
+Calculator text is compared only when both snapshots contain it and have matching scope.
+Building calculators require matching explicit unit attribution; an unselected building estimate is not comparable unit evidence.
+Different selections or missing text produce warnings, not cost changes.
+Text differences preserve estimates and their disclaimers; the command does not infer an all-in quote or unchanged optional-count assumptions.
+
 ## Hand control to a human
 
 Use `--intervene` on `search`, `listing`, or `property show` when a human can help with verification:
