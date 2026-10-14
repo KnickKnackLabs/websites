@@ -85,6 +85,52 @@ export default async function ({ context }) {
     assert.equal(ambiguous.calculatorText, null);
     passedScenarios.push('multiple calculator panels remain ambiguous');
 
+    const unitCalculatorHtml = `
+      <div data-subapp-name="rental-costs-and-fees-sub-app" style="display:contents">
+        <h2>Cost calculator</h2>
+        <button data-testid="unit-selection-display-name" aria-controls="unit-menu"
+          onclick="document.getElementById('unit-menu').hidden=false">2 units available</button>
+        <p id="unit-estimate">Estimated total</p>
+        <h3>Monthly costs</h3><p>Base rent $1600</p>
+        <h3>Move-in costs</h3><p>No required one-time fees provided</p>
+        <a href="/homedetails/example/123_zpid/">See unit details</a>
+      </div>
+      <div id="unit-menu" hidden>
+        <button role="menuitem" onclick="
+          document.querySelector('[data-testid=unit-selection-display-name]').textContent='Unit 42';
+          document.getElementById('unit-estimate').textContent='Estimated total for Unit 42';
+          document.getElementById('unit-menu').hidden=true;
+        "><span>Unit 42</span><span>$1600</span></button>
+        <button role="menuitem"><span>Unit 420</span></button>
+      </div>
+      <aside><button role="menuitem"><span>Unit 42</span></button></aside>
+    `;
+    const ownedPanel = await render(unitCalculatorHtml + unrelatedListingHtml);
+    assert.match(ownedPanel.calculatorText, /See unit details/);
+    assert.doesNotMatch(ownedPanel.calculatorText, /9999/);
+    await evaluateJSON(session, readListingPage, ['open_unit_menu']);
+    await evaluateJSON(session, readListingPage, ['select_unit', '42']);
+    const selectedUnit = await evaluateJSON(session, readListingPage);
+    assert.deepEqual(selectedUnit.calculatorUnit, { selectedUnit: '42', estimatedUnit: '42' });
+    passedScenarios.push('owned calculator selects exact unit through linked portal menu');
+
+    await render(unitCalculatorHtml.replace('aria-controls="unit-menu"', 'aria-controls="missing"'));
+    const missingMenu = await evaluateJSON(session, readListingPage, ['select_unit', '42']);
+    assert.match(missingMenu.error, /menu is missing/);
+    passedScenarios.push('unit selection rejects unlinked menu');
+
+    await render(unitCalculatorHtml.replace('<span>Unit 420</span>', '<span>Unit 42</span>'));
+    await evaluateJSON(session, readListingPage, ['open_unit_menu']);
+    const duplicateChoices = await evaluateJSON(session, readListingPage, ['select_unit', '42']);
+    assert.match(duplicateChoices.error, /ambiguous/);
+    passedScenarios.push('unit selection rejects duplicate exact choices');
+
+    const duplicateOwners = await render(unitCalculatorHtml + unitCalculatorHtml);
+    assert.equal(duplicateOwners.calculatorText, null);
+    const missingOwner = await evaluateJSON(session, readListingPage, ['open_unit_menu']);
+    assert.match(missingOwner.error, /panel is missing/);
+    passedScenarios.push('unit calculator rejects duplicate owners');
+
     const dialog = await render(`
       <div role="dialog" aria-label="Cost calculator">Monthly costs $1700</div>
     `);

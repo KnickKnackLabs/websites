@@ -1,6 +1,6 @@
 // This function is serialized into the page through CDP. Keep its dependencies
 // inside the function: imports and outer-scope bindings do not cross that boundary.
-export function readListingPage(action = 'snapshot') {
+export function readListingPage(action = 'snapshot', requestedUnit = null) {
   const headingSelector = 'h1,h2,h3,h4,[role="heading"]';
   const propertyLinkSelector = 'a[href*="/homedetails/"],a[href*="/b/"],a[href*="/apartments/"]';
 
@@ -48,7 +48,61 @@ export function readListingPage(action = 'snapshot') {
     return photos;
   }
 
+  function calculatorPanels() {
+    // The provider's ownership wrapper uses display:contents and has no rect.
+    return [...document.querySelectorAll('[data-subapp-name="rental-costs-and-fees-sub-app"]')]
+      .filter(panel => isVisible(panel) || [...panel.querySelectorAll('*')].some(isVisible));
+  }
+
+  function ownedCalculatorPanel() {
+    const panels = calculatorPanels();
+    return panels.length === 1 ? panels[0] : null;
+  }
+
+  function readCalculatorUnit() {
+    const panel = ownedCalculatorPanel();
+    if (!panel) return null;
+    const triggers = [...panel.querySelectorAll('button[data-testid="unit-selection-display-name"]')]
+      .filter(isVisible);
+    const selectedLabel = triggers.length === 1 ? triggers[0].textContent.trim() : null;
+    const estimates = (panel.innerText || '').match(/^Estimated total for Unit .+$/gm) ?? [];
+    return {
+      selectedUnit: selectedLabel?.startsWith('Unit ') ? selectedLabel.slice(5).trim() : null,
+      estimatedUnit: estimates.length === 1 ? estimates[0].slice('Estimated total for Unit '.length).trim() : null,
+    };
+  }
+
+  function unitSelection(action) {
+    const panel = ownedCalculatorPanel();
+    if (!panel) throw new Error('Unique owned calculator panel is missing');
+    const triggers = [...panel.querySelectorAll('button[data-testid="unit-selection-display-name"]')]
+      .filter(isVisible);
+    if (triggers.length !== 1) throw new Error('Unique calculator unit selector is missing');
+    const trigger = triggers[0];
+    if (action === 'open_unit_menu') {
+      trigger.click();
+    } else {
+      const menuId = trigger.getAttribute('aria-controls');
+      const menu = menuId ? document.getElementById(menuId) : null;
+      if (!menu || !isVisible(menu)) throw new Error('Calculator unit menu is missing');
+      const choices = [...menu.querySelectorAll('button[role="menuitem"]')].filter(choice => {
+        return isVisible(choice) && [...choice.querySelectorAll('span')]
+          .some(label => label.textContent.trim() === `Unit ${requestedUnit}`);
+      });
+      if (choices.length !== 1) throw new Error('Requested calculator unit is missing or ambiguous');
+      choices[0].click();
+    }
+    return { url: location.href, title: document.title, text: document.body.innerText };
+  }
+
   function readCalculatorText() {
+    const ownedPanels = calculatorPanels();
+    if (ownedPanels.length > 1) return null;
+    if (ownedPanels.length === 1) {
+      const text = ownedPanels[0].innerText || '';
+      return /monthly costs/i.test(text) && /move-in costs/i.test(text) ? text : null;
+    }
+
     const dialogs = [...document.querySelectorAll('[role="dialog"]')].filter(dialog => {
       const label = dialog.getAttribute('aria-label') || '';
       return /cost calculator/i.test(label + ' ' + dialog.textContent);
@@ -151,6 +205,19 @@ export function readListingPage(action = 'snapshot') {
   }
 
   if (action === 'open_calculator') return JSON.stringify(clickCalculator());
+  if (action === 'open_unit_menu' || action === 'select_unit') {
+    try {
+      return JSON.stringify(unitSelection(action));
+    } catch (error) {
+      // Include page evidence so verification still takes the human-handoff path.
+      return JSON.stringify({
+        error: error.message,
+        url: location.href,
+        title: document.title,
+        text: document.body.innerText,
+      });
+    }
+  }
   if (action !== 'snapshot') throw new Error('Unknown listing page action');
 
   const pageProps = readPageProps();
@@ -164,6 +231,7 @@ export function readListingPage(action = 'snapshot') {
     photos: readRenderedPhotos(),
     ogImage: document.querySelector('meta[property="og:image"]')?.content ?? null,
     calculatorText: readCalculatorText(),
+    calculatorUnit: readCalculatorUnit(),
     sections: readListingSections(),
   });
 }

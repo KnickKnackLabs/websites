@@ -48,6 +48,7 @@ export async function intervene(context, record) {
   const result = await reader(context, record.url, {
     page,
     calculator: record.calculator === true,
+    unit: record.unit ?? null,
     onChallenge: identifyChallenge,
   });
 

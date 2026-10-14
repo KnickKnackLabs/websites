@@ -2,17 +2,21 @@
 //MISE description="Show Zillow property facts, description, location and photo evidence"
 //USAGE arg "<url>" help="Zillow homedetails or building URL"
 //USAGE flag "--calculator" help="Read the cost calculator when available"
+//USAGE flag "--unit <number>" help="Select an exact available building unit (requires --calculator)"
 //USAGE flag "--browser <id>" help="Use an existing browser with a new owned tab"
 //USAGE flag "--headed" help="Show the ephemeral browser"
 //USAGE flag "--intervene" help="Keep verification open in a dedicated visible browser for human help"
 import { fileURLToPath } from 'node:url';
-import { requestedListing } from '../../../../scripts/zillow/listing.mjs';
+import { requestedListing, calculatorOptions } from '../../../../scripts/zillow/listing.mjs';
 import { runBrowser } from '../../../../scripts/zillow/browser-command.mjs';
 import { handoff } from '../../../../scripts/zillow/handoff.mjs';
 
 try {
   const { url } = requestedListing(process.env.usage_url);
-  const calculator = process.env.usage_calculator === 'true';
+  const { calculator, unit } = calculatorOptions({
+    calculator: process.env.usage_calculator === 'true',
+    unit: process.env.usage_unit ?? null,
+  });
   const intervention = process.env.usage_intervene === 'true';
   const browser = process.env.usage_browser || undefined;
   const headed = process.env.usage_headed === 'true';
@@ -22,11 +26,12 @@ try {
 
   let result;
   if (intervention) {
-    result = handoff({ operation: 'property', url, calculator });
+    result = handoff({ operation: 'property', url, calculator, unit });
   } else {
     const script = fileURLToPath(new URL('../../../../scripts/zillow/property.mjs', import.meta.url));
     const args = [url];
     if (calculator) args.push('--calculator');
+    if (unit !== null) args.push('--unit', unit);
     result = runBrowser(script, args, { browser, headed });
   }
   console.log(JSON.stringify(result, null, 2));

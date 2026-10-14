@@ -1,4 +1,4 @@
-import { readListing } from './listing.mjs';
+import { readListing, listingArguments } from './listing.mjs';
 import { RESULT_PREFIX } from './browser-command.mjs';
 import { buildingRecord, buildingUnits } from './building-units.mjs';
 
@@ -96,9 +96,7 @@ export async function readProperty(context, url, options = {}) {
 }
 
 export default async function ({ context, args }) {
-  const validArguments = args.length === 1 || (args.length === 2 && args[1] === '--calculator');
-  if (!validArguments) throw new Error('Provide a listing URL and optional --calculator');
-
-  const result = await readProperty(context, args[0], { calculator: args[1] === '--calculator' });
+  const { url, ...options } = listingArguments(args);
+  const result = await readProperty(context, url, options);
   console.log(RESULT_PREFIX + JSON.stringify(result));
 }

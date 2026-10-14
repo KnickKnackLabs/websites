@@ -66,6 +66,30 @@ test('launch saves private browser and exact challenge target', t => {
   assert.deepEqual(commands.calls, [['launch', '--temporary', '--headed']]);
 });
 
+test('unit calculator intervention saves and resumes the original unit selection', t => {
+  const store = privateStore(t);
+  const url = 'https://www.zillow.com/apartments/example-city/example-building/AbCd/';
+  let resumedRecord;
+  const parked = handoff({ operation: 'property', url, calculator: true, unit: '42' }, {
+    store,
+    manage: browserCommands().manage,
+    run: challengedRead,
+  });
+  assert.equal(store.load(parked.resumeHandle).unit, '42');
+
+  handoff({ token: parked.resumeHandle }, {
+    store,
+    manage: browserCommands().manage,
+    run: (_script, args) => {
+      resumedRecord = JSON.parse(args[1]);
+      return { status: 'complete', result: { calculator: {} } };
+    },
+  });
+  assert.equal(resumedRecord.unit, '42');
+  assert.equal(resumedRecord.calculator, true);
+  assert.equal(resumedRecord.url, url);
+});
+
 test('still-challenged resume preserves the same handle and exact target', t => {
   const store = parkedHandoff(t);
   let receivedRecord;

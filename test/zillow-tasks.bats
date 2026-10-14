@@ -82,6 +82,27 @@ REPO_DIR="${REPO_DIR:-$(cd "$BATS_TEST_DIRNAME/.." && pwd)}"
   [[ "$output" == *'--calculator'* ]]
 }
 
+@test "Zillow property unit calculator forwards exact selection" {
+  cd "$REPO_DIR"
+  local bin="$BATS_TEST_TMPDIR/bin"
+  mkdir -p "$bin"
+  printf '%s\n' '#!/usr/bin/env bash' 'printf "%s\\n" "$@" > "$ZILLOW_TEST_ARGS"' 'echo '\''WEBSITES_ZILLOW_RESULT={"calculator":{"unit":{"requested":"42"}}}'\''' > "$bin/browser"
+  chmod +x "$bin/browser"
+  run env PATH="$bin:$PATH" ZILLOW_TEST_ARGS="$BATS_TEST_TMPDIR/args" mise run zillow:property:show -- --calculator --unit 42 'https://www.zillow.com/b/example/AbCd/'
+  [ "$status" -eq 0 ]
+  run grep -Fx -- '--unit' "$BATS_TEST_TMPDIR/args"
+  [ "$status" -eq 0 ]
+  run grep -Fx -- '42' "$BATS_TEST_TMPDIR/args"
+  [ "$status" -eq 0 ]
+}
+
+@test "Zillow unit selection without calculator fails before launching" {
+  cd "$REPO_DIR"
+  run mise run zillow:property:show -- --unit 42 'https://www.zillow.com/b/example/AbCd/'
+  [ "$status" -ne 0 ]
+  [[ "$output" == *'--unit requires --calculator'* ]]
+}
+
 @test "Zillow intervention CLI help and invalid handle are safe" {
   cd "$REPO_DIR"
   run mise run zillow:listing --help

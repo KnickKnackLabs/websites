@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { requestedListing, listingEvidence, readListing } from '../../scripts/zillow/listing.mjs';
+import { requestedListing, listingEvidence, readListing, listingArguments } from '../../scripts/zillow/listing.mjs';
 
 const propertyUrl = 'https://www.zillow.com/homedetails/example/123_zpid/';
 const otherPropertyUrl = 'https://www.zillow.com/homedetails/other/999_zpid/';
@@ -165,6 +165,98 @@ test('a calculator click alone does not claim an identified panel', async () => 
   const browser = scriptedBrowser([rentalSnapshot(), { clicked: true }, rentalSnapshot()]);
   const result = await readListing(browser.context, propertyUrl, { calculator: true, sleep: noWait });
   assert.equal(result.calculator.reason, 'calculator_not_identified');
+});
+
+test('pre-rendered calculator is read without an ambiguous open-control click', async () => {
+  const snapshot = rentalSnapshot({ calculatorText: 'Monthly costs $1700' });
+  const browser = scriptedBrowser([snapshot]);
+  const result = await readListing(browser.context, propertyUrl, { calculator: true });
+  assert.equal(result.calculator.clicked, false);
+  assert.equal(result.calculator.text, snapshot.calculatorText);
+});
+
+function unitSnapshot(overrides = {}) {
+  return rentalSnapshot({
+    url: apartmentsUrl,
+    canonicalUrl: apartmentsUrl,
+    properties: [],
+    text: 'Available units\nMonthly costs\nMove-in costs',
+    calculatorText: 'Estimated total for Unit 42\nMonthly costs $1760\nMove-in costs unknown',
+    building: {
+      bdpUrl: new URL(apartmentsUrl).pathname,
+      floorPlans: [{ units: [{ zpid: 123, unitNumber: 'Unit 42' }] }],
+      rentalUnitsSummary: { availableUnitCount: 1 },
+    },
+    ...overrides,
+  });
+}
+
+test('unit calculator verifies provider identity and both selected and estimated unit', async () => {
+  const selected = unitSnapshot({ calculatorUnit: { selectedUnit: '42', estimatedUnit: '42' } });
+  const browser = scriptedBrowser([unitSnapshot(), {}, {}, selected]);
+  const result = await readListing(browser.context, apartmentsUrl, {
+    calculator: true, unit: '42', sleep: noWait,
+  });
+  assert.deepEqual(result.calculator.unit, {
+    requested: '42', id: 'zpid:123', selectedUnit: '42', estimatedUnit: '42',
+  });
+  assert.equal(result.calculator.text, selected.calculatorText);
+  assertTabWasCleanedUp(browser);
+});
+
+test('unit calculator refuses mismatched estimate even when the selector matches', async () => {
+  const wrongEstimate = unitSnapshot({ calculatorUnit: { selectedUnit: '42', estimatedUnit: '420' } });
+  const browser = scriptedBrowser([unitSnapshot(), {}, {}, wrongEstimate]);
+  await assert.rejects(readListing(browser.context, apartmentsUrl, {
+    calculator: true, unit: '42', sleep: noWait,
+  }), /selection and estimate/);
+  assertTabWasCleanedUp(browser);
+});
+
+test('unknown building unit is rejected before any calculator action', async () => {
+  const browser = scriptedBrowser([unitSnapshot()]);
+  await assert.rejects(readListing(browser.context, apartmentsUrl, {
+    calculator: true, unit: '999', sleep: noWait,
+  }), /missing or ambiguous/);
+});
+
+test('duplicate hydrated unit identity cannot establish calculator attribution', async () => {
+  const snapshot = unitSnapshot();
+  snapshot.building.floorPlans[0].units.push({ zpid: 123, unitNumber: 'Unit 420' });
+  const browser = scriptedBrowser([snapshot]);
+  await assert.rejects(readListing(browser.context, apartmentsUrl, {
+    calculator: true, unit: '42', sleep: noWait,
+  }), /missing or ambiguous/);
+});
+
+test('unit calculator rejects identity drift after selection', async () => {
+  const changed = unitSnapshot();
+  changed.building.floorPlans[0].units[0].zpid = 999;
+  const browser = scriptedBrowser([unitSnapshot(), {}, {}, changed]);
+  await assert.rejects(readListing(browser.context, apartmentsUrl, {
+    calculator: true, unit: '42', sleep: noWait,
+  }), /identity changed/);
+});
+
+test('unit selection challenge parks for human help rather than failing as a missing menu', async () => {
+  const browser = scriptedBrowser([unitSnapshot(), {
+    error: 'Unique owned calculator panel is missing',
+    url: apartmentsUrl, text: 'Press and hold to verify',
+  }]);
+  const result = await readListing(browser.context, apartmentsUrl, {
+    calculator: true, unit: '42', sleep: noWait,
+    onChallenge: async () => ({ status: 'needs_human' }),
+  });
+  assert.equal(result.status, 'needs_human');
+  assert.equal(browser.events.some(event => event.action === 'close'), false);
+});
+
+test('unit arguments require calculator and preserve exact unit number', () => {
+  assert.deepEqual(listingArguments([apartmentsUrl, '--unit', '42', '--calculator']), {
+    url: apartmentsUrl, unit: '42', calculator: true,
+  });
+  assert.throws(() => listingArguments([apartmentsUrl, '--unit', '42']), /requires/);
+  assert.throws(() => listingArguments([apartmentsUrl, '--calculator', '--unit', '']), /Provide/);
 });
 
 const failedReads = {

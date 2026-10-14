@@ -86,12 +86,14 @@ Building reads may lack property hydration and rely on the matching URL/canonica
 Photos are rendered images only, not a complete gallery; `photoScope` explicitly says `rendered_images_only`.
 
 Without `--calculator`, no calculator control is clicked.
-With it, the reader clicks only one visible control whose text is exactly `Cost calculator`.
+With it, the reader first checks for an already-rendered calculator.
+Otherwise it clicks only one visible control whose text is exactly `Cost calculator`.
 Absent or ambiguous controls are reported without clicking.
-Original listing evidence stays separate from `calculator.expandedListing`, the page after the click.
+Original listing evidence stays separate from `calculator.expandedListing`, the calculator-page snapshot.
 `calculator.text` accepts a single identifiable calculator dialog or a unique inline container
 anchored by `Cost calculator` with both monthly and move-in cost sections.
-Inline containers containing other listing sections or property links are rejected; whole-page text is never sliced into calculator evidence.
+The provider's explicit rental-costs subapp is also an accepted owner, including its `See unit details` link.
+Other inline containers containing listing sections or property links are rejected; whole-page text is never sliced into calculator evidence.
 Otherwise it is null with `reason: calculator_not_identified`, even if the click succeeded.
 Inline detection has synthetic Chromium coverage and successful live individual-property and apartment-building reads.
 No broad `Show more` controls are clicked. The reader does not claim that all narrative sections have been expanded.
@@ -139,6 +141,25 @@ Missing counts, duplicate identities, malformed collections, or count mismatches
 No individual listing URL is fabricated from a unit ID.
 
 A live Solano read collected all 15 provider-reported available units and retained their base rent and required fees separately.
+
+## Read costs for a building unit
+
+```sh
+websites zillow property show '<building-url>' --calculator --unit 42 --intervene
+```
+
+`listing` accepts the same `--unit <number>` option. Supply the exact number without the `Unit ` display prefix.
+It requires `--calculator` and a building URL with a unique matching unit in identity-checked hydration.
+The reader opens the calculator's own unit selector, selects an exact label inside its linked menu,
+and checks that both the selected control and estimated-total label identify that unit.
+A missing or ambiguous unit, changed identity, or unverified estimate fails rather than returning building-wide costs as unit costs.
+Intervention resume retains the original unit selection.
+
+`calculator.unit` contains `requested`, provider `id`, `selectedUnit`, and `estimatedUnit`.
+`calculator.text` preserves the displayed estimate, lease assumptions, default optional-item counts and fee disclaimers.
+It does not change pet/applicant counts or expand `Show more` sections.
+An estimated monthly total is not an all-in quote; “No required one-time fees provided” does not prove there is no deposit.
+Synthetic Chromium tests cover linked-menu ownership and exact selection; a live building-unit read verified matching selection and estimate.
 
 ## Hand control to a human
 

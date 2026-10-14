@@ -16,6 +16,7 @@ function launchHandoff(request, token, { store, manage }) {
     operation: request.operation,
     url: request.url,
     calculator: request.calculator ?? false,
+    unit: request.unit ?? null,
     browser,
     targetId: null,
     created: new Date().toISOString(),
