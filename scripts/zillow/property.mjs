@@ -1,6 +1,7 @@
 import { readListing, listingArguments } from './listing.mjs';
 import { RESULT_PREFIX } from './browser-command.mjs';
 import { buildingRecord, buildingUnits } from './building-units.mjs';
+import { propertyMedia } from './property-media.mjs';
 
 function sourceField(properties, field) {
   const distinctValues = new Map();
@@ -81,6 +82,7 @@ export function propertyRecord(evidence) {
     description: sourceField(properties, 'description'),
     rentalFacts: omitEmptyFacts(sourceField(properties, 'resoFacts')),
     sections: listing.sections ?? {},
+    media: propertyMedia(listing),
     photos: listing.photos,
     primaryImage: listing.ogImage,
     calculator,

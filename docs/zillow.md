@@ -120,11 +120,38 @@ An off-market price without an explicit matching valuation field remains unspeci
 `recordType` distinguishes `individual_property` from `building`. Building pages use their own identity-checked hydration,
 scoped `sections`, and calculator evidence. A building price range is never promoted to an individual unit's rent.
 Empty rental-fact fields are omitted. Whole-page text is never parsed into property facts.
-Photos are rendered images only and may include neighboring content; a complete property gallery is not yet established.
+The legacy `photos`, `primaryImage`, and `photoScope` fields still describe rendered images and may include neighboring content.
+Use `media` for identity-scoped galleries and floor plans, described below.
 It accepts the same browser and intervention flags as `listing`; intervention resume preserves this property-record output.
 This adds a convenient structured view, not inferred pet eligibility, utility costs or availability guarantees.
 A live Cedar Lake read returned hydrated facts, description and scoped inline calculator text successfully;
 human-assisted challenge completion remains unverified.
+
+## Property galleries and floor plans
+
+`property show` includes `media` without an extra flag or gallery clicks.
+It uses only the property's or building's identity-checked hydration, never global rendered images, maps, nearby cards or lightbox defaults.
+No images are downloaded and no URL variants are generated.
+
+For an individual property, `media.gallery` contains the provider's `responsivePhotos`.
+`originalRatioPhotos` and `originalPhotos` retain alternate source collections separately; they are not matched by position or merged.
+Each collection includes its `source`, `status` (`recorded`, `missing`, or `invalid`), `count`, and original `items`,
+including supplied URLs, captions, format/width variants and other provider metadata.
+`reportedCount` and `countMatches` compare that collection with the provider's photo count when available.
+A matching count is not a guarantee that every image Zillow might expose has been collected.
+`interactiveFloorPlan` retains the explicit provider URL when supplied, not an inferred link.
+Missing sources do not prove that no photos or floor plans exist.
+If hydration copies disagree, `media.status` is `conflicting_sources` with separate `sources` instead of a selected gallery.
+
+For a building, `media.gallery` contains the community gallery.
+`floorPlans` separates each named layout's `images` from its `representativeGallery` of interior photos.
+`units` retains each provider identity, unit number, plan name, `gallery`, and `floorPlanImages`, including ungrouped units.
+A missing or duplicate identity is explicit in `identityStatus`; those records are not merged or attributed by address.
+Unit-associated photos may repeat representative plan images: they are **not verified photographs of the exact apartment**.
+The provider's `floorPlanDisclaimer` is preserved when supplied.
+Alternate amenity/signature collections are not added to the community gallery as extra photos.
+Malformed layout/unit collections are reported in `reasons`; `floorPlanSourceStatus` distinguishes missing from recorded collections.
+These are scoped source records, not proof of media completeness or physical availability.
 
 ## Available building units
 
@@ -184,7 +211,7 @@ The records must identify the same property and the after timestamp must not pre
 Individual properties match by Zillow ID even if their URL slug changed; building URLs must have the same path.
 
 Comparison covers pricing, valuations, status, dimensions, location, narrative, rental facts, scoped sections and building metadata.
-It ignores read timestamps, titles, rendered photos and duplicate derived pricing fields.
+It ignores read timestamps, titles, rendered photos, scoped media and duplicate derived pricing fields.
 Arrays inside a fact retain source order; an array reorder can therefore be reported as changed evidence.
 A fact becoming null is an evidence change, not proof that a provider removed the underlying feature.
 `changed: false` means no differences in compared evidence, not a guarantee that the live listing is unchanged.

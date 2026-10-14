@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { evaluateJSON, withOwnedTab } from '../../../scripts/zillow/browser.mjs';
 import { readListingPage } from '../../../scripts/zillow/listing-page.mjs';
+import { propertyMedia } from '../../../scripts/zillow/property-media.mjs';
 
 const calculatorHtml = `
   <section>
@@ -24,8 +25,10 @@ export default async function ({ context }) {
       return evaluateJSON(session, readListingPage);
     }
 
+    const propertyGallery = [{ url: 'https://photos.zillowstatic.com/owned-room.jpg', caption: 'Owned room' }];
     const hydration = { props: { pageProps: { componentProps: {
-      gdpClientCache: JSON.stringify({ detail: { property: { zpid: 123 } } }),
+      gdpClientCache: JSON.stringify({ detail: { property: { zpid: 123, responsivePhotos: propertyGallery } } }),
+      initialReduxState: { nearbyProperties: [{ responsivePhotos: [{ url: 'https://example.test/neighbor.jpg' }] }] },
     } } } };
     const hydratedPage = await render(`
       <script id="__NEXT_DATA__" type="application/json">${JSON.stringify(hydration)}</script>
@@ -39,11 +42,19 @@ export default async function ({ context }) {
       alt: 'Kitchen',
     }]);
     passedScenarios.push('hydration and Zillow photo filtering');
+    const propertyGalleryRead = propertyMedia({ ...hydratedPage, id: '123' });
+    assert.deepEqual(propertyGalleryRead.gallery.items, propertyGallery);
+    assert.equal(JSON.stringify(propertyGalleryRead).includes('neighbor.jpg'), false);
+    passedScenarios.push('property media uses hydration rather than global rendered images');
 
     const building = {
       bdpUrl: '/apartments/example-city/example-building/AbCd/',
       lotId: 'building-1',
-      floorPlans: [{ name: 'One bedroom', units: [{ zpid: '123', unitNumber: 'Unit 124' }] }],
+      galleryPhotos: propertyGallery,
+      floorPlans: [{
+        name: 'One bedroom', photos: [{ url: 'https://photos.zillowstatic.com/owned-layout.jpg' }],
+        units: [{ zpid: '123', unitNumber: 'Unit 124', galleryPhotos: propertyGallery }],
+      }],
       rentalUnitsSummary: { availableUnitCount: 1 },
     };
     const buildingHydration = {
@@ -60,6 +71,13 @@ export default async function ({ context }) {
     assert.deepEqual(buildingPage.building, building);
     assert.deepEqual(buildingPage.properties, []);
     passedScenarios.push('building hydration uses its own Redux owner');
+    const buildingGalleryRead = propertyMedia({ ...buildingPage, id: null });
+    assert.deepEqual(buildingGalleryRead.gallery.items, propertyGallery);
+    assert.equal(buildingGalleryRead.units[0].id, 'zpid:123');
+    assert.equal(buildingGalleryRead.floorPlans[0].images.items[0].url,
+      'https://photos.zillowstatic.com/owned-layout.jpg');
+    assert.equal(JSON.stringify(buildingGalleryRead).includes('dummy'), false);
+    passedScenarios.push('building media excludes nearby and lightbox owners');
 
     const inline = await render(calculatorHtml + unrelatedListingHtml);
     assert.match(inline.calculatorText, /Required rent \$1700/);

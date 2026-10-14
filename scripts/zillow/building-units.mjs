@@ -6,7 +6,7 @@ function sourceIdentifier(value) {
   return null;
 }
 
-function unitIdentity(unit) {
+export function unitIdentity(unit) {
   const zpid = sourceIdentifier(unit.zpid);
   if (zpid) return `zpid:${zpid}`;
   const feedId = sourceIdentifier(unit.feedModelId);
