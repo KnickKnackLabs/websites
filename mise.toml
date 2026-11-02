@@ -1,11 +1,17 @@
+[settings]
+quiet = true
+task_output = "interleave"
+experimental = true
+
 [plugins]
 shiv = "https://github.com/KnickKnackLabs/vfox-shiv"
 
 [tools]
-usage = "latest"
-jq = "latest"
-gum = "latest"
-node = "latest"
+bats = "1.14.0"
 bun = "latest"
-bats = "1.13.0"
+gum = "latest"
+jq = "latest"
+node = "latest"
+
+# Knick Knack Labs
 "shiv:browser" = "0.3"
