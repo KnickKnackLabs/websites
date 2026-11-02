@@ -7,47 +7,61 @@
 //   import { login } from './login.mjs';
 //   await login(page, { agent: 'x1f9', username, password });
 
-import { execFileSync } from 'node:child_process';
-import { pollForVerificationCode } from './email-code.mjs';
-import { record } from '../record.mjs';
+import { execFileSync } from "node:child_process";
+import { pollForVerificationCode } from "./email-code.mjs";
+import { record } from "../record.mjs";
 
-const OTP_SELECTOR = '#otp, input[name="otp"], input[autocomplete="one-time-code"]';
+const MILLISECOND = 1;
+const SECOND = 1000 * MILLISECOND;
 
-export function classifyOtpChallenge({ url = '', text = '' } = {}) {
+const fFalse = () => false;
+
+const OTP_SELECTOR =
+  '#otp, input[name="otp"], input[autocomplete="one-time-code"]';
+
+const VERIFY_REGEX =
+  /verify (your )?(device|email|sign[-\s]?in)|device verification|check your email|we sent[^\n]*(email|code)/;
+
+const TWO_FACTOR_REGEX =
+  /two[-\s]?factor|authenticator|recovery code|security key|github mobile/;
+
+export function classifyOtpChallenge({ url = "", text = "" } = {}) {
   const haystack = `${url}\n${text}`.toLowerCase();
 
-  if (/verify (your )?(device|email|sign[-\s]?in)|device verification|check your email|we sent[^\n]*(email|code)/.test(haystack)) {
-    return 'device';
+  if (VERIFY_REGEX.test(haystack) || url.includes("/login/device")) {
+    return "device";
   }
 
-  if (/two[-\s]?factor|authenticator|recovery code|security key|github mobile/.test(haystack)) {
-    return 'totp';
+  if (TWO_FACTOR_REGEX.test(haystack) || url.includes("/sessions/two-factor")) {
+    return "totp";
   }
 
-  if (url.includes('/login/device')) return 'device';
-  if (url.includes('/sessions/two-factor')) return 'totp';
-
-  return 'unknown';
+  return "unknown";
 }
 
 export function normalizeTotpCode(value) {
-  const code = String(value || '').trim();
+  const code = String(value || "").trim();
   if (!/^\d{6,8}$/.test(code)) {
-    throw new Error('Generated GitHub TOTP code was not a 6-8 digit value.');
+    throw new Error("Generated GitHub TOTP code was not a 6-8 digit value.");
   }
   return code;
 }
 
-export function resolveGitHubTotpCode(agent, { env = process.env, execFile = execFileSync } = {}) {
+export function resolveGitHubTotpCode(
+  agent,
+  { env = process.env, execFile = execFileSync } = {},
+) {
   if (env.GITHUB_TOTP_COMMAND) {
     try {
-      const output = execFile('bash', ['-lc', env.GITHUB_TOTP_COMMAND], {
-        encoding: 'utf8',
+      const output = execFile("bash", ["-lc", env.GITHUB_TOTP_COMMAND], {
+        encoding: "utf8",
         env,
       });
       return normalizeTotpCode(output);
     } catch {
-      throw new Error(`GitHub two-factor authentication command failed for ${agent}.`);
+      throw new Error(
+        `GitHub two-factor authentication command failed for ${agent}.`,
+      );
     }
   }
 
@@ -55,23 +69,20 @@ export function resolveGitHubTotpCode(agent, { env = process.env, execFile = exe
     return normalizeTotpCode(env.GITHUB_TOTP_CODE);
   }
 
-  throw new Error(`GitHub two-factor authentication required for ${agent}; set GITHUB_TOTP_CODE or GITHUB_TOTP_COMMAND to a current code source.`);
+  throw new Error(
+    `GitHub two-factor authentication required for ${agent}; set GITHUB_TOTP_CODE or GITHUB_TOTP_COMMAND to a current code source.`,
+  );
 }
 
 async function submitOtpCode(page, otpInput, code) {
-  if (await otpInput.isVisible({ timeout: 5000 }).catch(() => false)) {
+  if (await otpInput.isVisible({ timeout: 5 * SECOND }).catch(fFalse)) {
     await otpInput.fill(code);
   } else {
     const textInput = page.locator('input[type="text"]:visible').first();
     await textInput.fill(code);
   }
 
-  await page.keyboard.press('Enter').catch(() => {});
-
-  const submitBtn = page.locator('button[type="submit"]:visible, input[type="submit"]:visible').first();
-  if (await submitBtn.isVisible({ timeout: 2000 }).catch(() => false)) {
-    await submitBtn.click();
-  }
+  await page.keyboard.press("Enter").catch(() => {});
 }
 
 // Login to GitHub. Resolves when the session is fully authenticated.
@@ -80,60 +91,84 @@ export async function login(page, { agent, username, password }) {
   console.log(`Logging in as ${username}...`);
   let loginTotpCode = null;
 
-  await page.goto('https://github.com/login');
-  await page.waitForLoadState('domcontentloaded');
+  await page.goto("https://github.com/login");
+  await page.waitForLoadState("domcontentloaded");
   await page.fill('input[name="login"]', username);
   await page.fill('input[name="password"]', password);
   await page.click('input[type="submit"], button[type="submit"]');
 
   // Wait for navigation away from login form submission
-  await page.waitForURL(url => !url.toString().endsWith('/session'), { timeout: 30000 }).catch(() => {
-    console.error(`Warning: login navigation may have failed. Current URL: ${page.url()}`);
-  });
+  await page
+    .waitForURL((url) => !url.toString().endsWith("/session"), {
+      timeout: 30000,
+    })
+    .catch(() => {
+      console.error(
+        `Warning: login navigation may have failed. Current URL: ${page.url()}`,
+      );
+    });
 
   const postLoginUrl = page.url();
   record(`login-post-submit-${agent}.html`, await page.content());
 
   const otpInput = page.locator(OTP_SELECTOR).first();
-  const otpVisible = await otpInput.isVisible({ timeout: 3000 }).catch(() => false);
+  const otpVisible = await otpInput
+    .isVisible({ timeout: 3000 })
+    .catch(() => false);
 
-  if (otpVisible || postLoginUrl.includes('/sessions/two-factor') || postLoginUrl.includes('/login/device')) {
-    const challengeText = await page.textContent('body').catch(() => '');
-    const challengeType = classifyOtpChallenge({ url: postLoginUrl, text: challengeText || '' });
+  if (
+    otpVisible ||
+    postLoginUrl.includes("/sessions/two-factor") ||
+    postLoginUrl.includes("/login/device")
+  ) {
+    const challengeText = await page.textContent("body").catch(() => "");
+    const challengeType = classifyOtpChallenge({
+      url: postLoginUrl,
+      text: challengeText || "",
+    });
 
-    if (challengeType === 'totp') {
-      console.log('Two-factor authentication required. Generating TOTP code...');
+    if (challengeType === "totp") {
+      console.log(
+        "Two-factor authentication required. Generating TOTP code...",
+      );
       loginTotpCode = resolveGitHubTotpCode(agent);
       await submitOtpCode(page, otpInput, loginTotpCode);
     } else {
-      console.log('Device verification required. Polling email...');
+      console.log("Device verification required. Polling email...");
 
       const code = await pollForVerificationCode(agent);
       if (!code) {
-        throw new Error('Could not find verification code in email.');
+        throw new Error("Could not find verification code in email.");
       }
 
-      console.error('Got verification code.');
+      console.error("Got verification code.");
       await submitOtpCode(page, otpInput, code);
     }
 
     // Wait for redirect past verification.
-    await page.waitForURL(url => {
-      const s = url.toString();
-      return !s.includes('/login') && !s.includes('/sessions');
-    }, { timeout: 30000 });
+    await page.waitForURL(
+      (url) => {
+        const s = url.toString();
+        return !s.includes("/login") && !s.includes("/sessions");
+      },
+      { timeout: 30000 },
+    );
 
     record(`login-post-verify-${agent}.html`, await page.content());
   }
 
-  const loginFormStillVisible = await page.locator('input[name="login"], input[name="password"]').first()
+  const loginFormStillVisible = await page
+    .locator('input[name="login"], input[name="password"]')
+    .first()
     .isVisible({ timeout: 1000 })
     .catch(() => false);
   if (loginFormStillVisible) {
     record(`login-failed-${agent}.html`, await page.content());
-    throw new Error(`GitHub login did not complete. Current URL: ${page.url()}`);
+    throw new Error(
+      `GitHub login did not complete. Current URL: ${page.url()}`,
+    );
   }
 
-  console.log('Logged in successfully.');
+  console.log("Logged in successfully.");
   return { loginTotpCode };
 }
